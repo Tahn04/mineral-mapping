@@ -5,20 +5,13 @@ from rasterio import features
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+import bottleneck as bn
 from shapely.geometry import shape
 from scipy.ndimage import generic_filter # GET RID OF THIS
 from scipy.signal import convolve2d
 
 # Raster Operations
 def show_raster(raster, cmap='gray', title=None):
-    """
-    Display a raster dataset using matplotlib.
-
-    Args:
-        raster (numpy.ndarray): The raster data.
-        cmap (str): Colormap to use for display.
-        title (str): Title for the plot.
-    """
     import matplotlib.pyplot as plt
 
     plt.figure(figsize=(8, 6))
@@ -30,65 +23,34 @@ def show_raster(raster, cmap='gray', title=None):
     plt.show()
 
 def threshold(raster, threshold):
-    """
-    Apply a threshold to a raster dataset.
-
-    Args:
-        raster (numpy.ndarray): The raster data.
-        threshold (float): The threshold value.
-
-    Returns:
-        numpy.ndarray: The thresholded raster data.
-    """
+    raster = np.asarray(raster)
     return (raster > threshold).astype(raster.dtype)
 
 def mask(raster, mask):
-    """
-    Apply a mask to a raster dataset.
-
-    Args:
-        raster (numpy.ndarray): The raster data.
-        mask (numpy.ndarray): The mask to apply.
-
-    Returns:
-        numpy.ndarray: The masked raster data.
-    """
     return raster * mask
 
 def open_raster(raster_path):
-    """
-    Open a raster file and return the dataset.
-
-    Args:
-        raster_path (str): Path to the raster file.
-
-    Returns:
-        rasterio.DatasetReader: The opened raster dataset.
-    """
-
     return rio.open(raster_path) 
 
 def open_raster_band(raster, band_number):
-    """
-    Open a specific band of a raster. Opens the raster as a masked array. 
-    Then fills the masked values with np.nan.
-
-    Args:
-        raster (np array): The raster dataset.
-        band_number (int): Band number to open.
-
-    Returns:
-        numpy.ndarray: The data of the specified band.
-    """
-    
-    
     return raster.read(band_number, masked=True).filled(np.nan)
 
 # Filters
 from scipy.ndimage import median_filter
 
-def median_kernel_filter(raster, size=3):
-    return median_filter(raster, size)
+# fast but not as accurate
+# def median_kernel_filter(raster, size=3, iterations=1): 
+#     for _ in range(iterations):
+#         raster = median_filter(raster, size=size)
+#     return raster
+
+# More accurate but slower
+def median_kernel_filter(raster, size=3, iterations=1):
+    def bn_nanmedian(arr):
+        return bn.nanmedian(arr)
+    for _ in range(iterations):
+        raster = generic_filter(raster, bn_nanmedian, size=3)
+    return raster
 
 # def majority_filter(raster):
 #     def filter_func(values):
@@ -97,15 +59,19 @@ def median_kernel_filter(raster, size=3):
 #     return generic_filter(raster, filter_func, size=(3, 3), mode='nearest')
 
 
-def majority_filter(binary_array, window_size=3):
-    kernel = np.ones((window_size, window_size), dtype=np.uint8)
+def majority_filter(binary_array, window_size=3, iterations=1):
+    def mfilter(binary_array, window_size=3):
+        kernel = np.ones((window_size, window_size), dtype=np.uint8)
 
-    binary_array = np.nan_to_num(binary_array, nan=0).astype(np.uint8)
-    
-    count = convolve2d(binary_array, kernel, mode='same', boundary='symm')
-    
-    threshold = (window_size * window_size) // 2
-    return (count > threshold).astype(np.uint8)
+        binary_array = np.nan_to_num(binary_array, nan=0).astype(np.uint8)
+        
+        count = convolve2d(binary_array, kernel, mode='same', boundary='symm')
+        
+        threshold = (window_size * window_size) // 2
+        return (count > threshold).astype(np.uint8)
+    for _ in range(iterations):
+        binary_array = mfilter(binary_array, window_size=window_size)
+    return binary_array
 
 def boundary_clean(raster_array, classes=None, iterations=1, radius=1):
     """
