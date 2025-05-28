@@ -3,6 +3,8 @@ import os
 
 import core.utils as utils
 import numpy as np
+import bottleneck as bn
+from scipy.ndimage import generic_filter
 from tqdm import tqdm
 
 def get_thresholds(param):
@@ -51,6 +53,13 @@ class Defaults:
     def get_indicator_mask(self, indicator): # Dict
         return self.config["PARAM_SETTINGS"][indicator]["Mask"]
 
+
+
+
+#===========================================#
+# Processing Functions
+#===========================================#
+
 def full_threshold(raster, thresholds):
 
     # thresholds = get_thresholds(param)
@@ -63,38 +72,30 @@ def full_threshold(raster, thresholds):
         
     return results
 
-def list_majority_filter(raster_list, iterations=1):
+def median_kernel_filter(raster, size=3, iterations=1):
+    def bn_nanmedian(arr):
+        return bn.nanmedian(arr)
+    for _ in range(iterations):
+        raster = generic_filter(raster, bn_nanmedian, size=3)
+    return raster
 
-    results = []
-    for raster in tqdm(raster_list, desc="Majority filtering"):
-        result = utils.majority_filter(raster)
-        for _ in range(iterations - 1):
-            result = utils.majority_filter(result)
-        results.append(result)
-        
-    return results
+def list_majority_filter(raster_list, num_iterations=1, size=3):
+    return [
+        utils.majority_filter(raster, size=size, iterations=num_iterations)
+        #for raster in raster_list
+        for raster in tqdm(raster_list, desc="Applying majority filter")
+    ]
 
-def list_boundary_clean(raster_list, iterations=1):
-    results = []
-    for raster in tqdm(raster_list, desc="Boundary cleaning"):
-        result = utils.boundary_clean(raster)
-        for _ in range(iterations - 1):
-            result = utils.boundary_clean(result)
-        results.append(result)
-        
-    return results
+def list_boundary_clean(raster_list, iterations=1, radius=1):
+    return [
+        utils.boundary_clean(raster, iterations=iterations, radius=radius)
+        #for raster in raster_list
+        for raster in tqdm(raster_list, desc="Boundary cleaning")
+    ]
+
+
 
 def list_vectorize(raster_list, profile, param):
-    """
-    Apply a vectorization to a list of rasters.
-
-    Args:
-        raster_list (list): List of raster data.
-        size (int): Size of the kernel.
-
-    Returns:
-        list: List of filtered raster data.
-    """
     transform = profile.transform
     crs = profile.crs
 

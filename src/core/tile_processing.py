@@ -57,6 +57,8 @@ class Raster:
         self.path = path
         self.dataset = utils.open_raster(path)
         self.raster = utils.open_raster_band(self.dataset, 1)
+        self.transform = self.dataset.transform
+        self.crs = self.dataset.crs
 
     def get_data(self):
         return self.raster
@@ -81,7 +83,7 @@ class TileParameterization:
         self.input_path = input_path
         self.output_path = output_path
         self.raster = Raster(input_path).get_data()
-        self.profile = Raster(input_path).get_profile()
+        self.profile = Raster(input_path)
         self.param_tracking = ParameterTracking()
         self.defaults = pr.Defaults() 
         if param is not None:
@@ -96,8 +98,8 @@ class TileParameterization:
         # else:
         #     median_filtered = self.param_tracking.median_filter
 
-        n = self.defaults.get_num_median_filter(param)
-        median_filtered = utils.median_kernel_filter(self.raster, size=3, iterations=n)
+        num_median_filter = self.defaults.get_num_median_filter(param)
+        median_filtered = pr.median_kernel_filter(self.raster, size=3, iterations=num_median_filter)
         
         thresholds = self.defaults.get_thresholds(param)
         return pr.full_threshold(median_filtered, thresholds)
@@ -106,22 +108,21 @@ class TileParameterization:
         print(f"Processing parameter: {self.param}")
         
         thresholds = self.threshold(self.param)
-        utils.show_raster(thresholds[0], cmap='gray', title=f"Boundary Cleaned: {self.param}")
        
         num_majority_filter = self.defaults.get_num_majority_filter(self.param)
-        maj_filt_list = pr.list_majority_filter(thresholds, num_majority_filter)
-        
-        # Clean boundaries
         num_boundary_clean = self.defaults.get_num_boundary_clean(self.param)
+
+        maj_filt_list = pr.list_majority_filter(thresholds, num_majority_filter)
         boundary_clean_list = pr.list_boundary_clean(maj_filt_list, num_boundary_clean)
         
-        utils.show_raster(boundary_clean_list[0], cmap='gray', title=f"Boundary Cleaned: {self.param}")
+        maj3_filt_list = pr.list_majority_filter(boundary_clean_list, 3)
+        sieve_list = utils.list_sieve_filter(maj3_filt_list, profile=self.profile)
+        boundary_clean_list = pr.list_boundary_clean(sieve_list, num_boundary_clean)
 
-        # Vectorize the cleaned boundaries
         vector_list = pr.list_vectorize(boundary_clean_list, self.profile, self.param)
         vector_stack = utils.merge_polygons(vector_list)
 
-        utils.save_shapefile(vector_stack, self.output_path, "first.shp")
+        utils.save_shapefile(vector_stack, self.output_path, "D2300_full_pro.shp")
     
 def get_file(path, param):
     """Get a file from the directory that matches the parameter."""
