@@ -109,3 +109,38 @@ def list_vectorize(raster_list, profile, param):
         index += 1
         
     return results
+
+def list_vectorize_dict(labeled_raster_list, stats_dict_list, param):
+    transform = param.get_transform()
+    crs = param.get_crs()
+
+    results = []
+    for labeled_raster, stats_dict in tqdm(zip(labeled_raster_list, stats_dict_list), total=len(labeled_raster_list), desc="Vectorizing with stats"):
+        result = utils.vectorize_dict(labeled_raster, stats_dict, transform, crs)
+        results.append(result)
+
+    return results
+
+def list_zonal_stats(labeled_raster_list, param):
+
+    thresholds = param.get_thresholds()
+    transform = param.get_transform()
+
+    x_res = transform[0]
+    y_res = abs(transform[4]) # y res is negative for north-up images
+    pixel_area = x_res * y_res
+
+    index = 0
+    results = []
+    for labeled_raster in tqdm(labeled_raster_list, desc="Calculating zonal stats"):
+        result = utils.zonal_stats(labeled_raster, param.raster, thresholds[index], pixel_area)
+        results.append(result)
+        index += 1
+        
+    return results
+
+def list_label_clusters(raster_list):
+    return [
+        utils.label_clusters(raster)
+        for raster in tqdm(raster_list, desc="Labeling clusters")
+    ]

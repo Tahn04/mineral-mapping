@@ -7,7 +7,7 @@ import pandas as pd
 import geopandas as gpd
 from scipy.signal import convolve2d
 from shapely.geometry import shape
-from skimage.morphology import disk, dilation, erosion, square
+from skimage.morphology import dilation, erosion, square
 from osgeo import gdal
 import rasterio
 import tempfile
@@ -82,8 +82,8 @@ def list_sieve_filter(array, threshold=9, connectedness=4, profile=None, iterati
     bands, height, width = array.shape
     filtered_array = np.empty_like(array, dtype="uint8")
 
-    transform = profile.transform 
-    crs = profile.crs 
+    transform = profile.get_transform()
+    crs = profile.get_crs()
 
     for b in range(bands):
         array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")
@@ -94,7 +94,7 @@ def list_sieve_filter(array, threshold=9, connectedness=4, profile=None, iterati
             tmp_src_path, tmp_dst_path = tmp1.name, tmp2.name
 
             # Write band to file
-            with rasterio.open(
+            with rio.open(
                 tmp_src_path, "w",
                 driver="GTiff",
                 height=height,
@@ -150,12 +150,28 @@ def vectorize(mask_array, value, transform, crs):
     # Convert boolean mask to uint8 for rasterio.features.shapes
     mask_uint8 = mask_array.astype(np.uint8)
     shapes = features.shapes(mask_uint8, transform=transform) # should be rio.features.shapes
-    polygons = [ 
+    polygons = [
         {"geometry": shape(geom), "value": value}
         for geom, val in shapes if val == 1
     ]
     gdf = gpd.GeoDataFrame(polygons, crs=crs)
     # gdf = gdf.drop(columns="value")
+    return gdf
+
+def vectorize_dict(labeled_array, stats_dict, transform, crs):
+    features = rio.features.shapes(labeled_array.astype(np.int32), transform=transform)
+
+    polygons = []
+    for geom, label in features:
+        label = int(label)
+        if label == 0 or label not in stats_dict:
+            continue
+
+        data = {"geometry": shape(geom), "label": label}
+        data.update(stats_dict[label])
+        polygons.append(data)
+
+    gdf = gpd.GeoDataFrame(polygons, crs=crs)
     return gdf
 
 def merge_polygons(gdf):
@@ -192,30 +208,50 @@ def label_clusters(binary_raster, connectivity=1):
     
     Returns:
     - labeled (np.ndarray): Same shape as input, with unique labels for each cluster.
-    - num_features (int): Total number of unique clusters found.
     """
     structure = ndimage.generate_binary_structure(2, connectivity)
-    labeled, num_features = ndimage.label(binary_raster, structure=structure)
-    return labeled, num_features
+    labeled = ndimage.label(binary_raster, structure=structure)[0]
+    return labeled
 
-def zonal_stats(data_raster, zone_raster, nodata=np.nan):
-    mask = ~np.isnan(data_raster)
-    data_clean = data_raster[mask]
-    zones_clean = zone_raster[mask]
+def zonal_stats(zone_raster, data_raster, value, pixel_area):
+    """
+    Calculate zonal statistics for a given data raster and labeled raster.
+    Parameters:
+    - data_raster (np.ndarray): 2D array of data values.
+    - zone_raster (np.ndarray): 2D array of zone labels.
+    - value (float): The value of the raster as a whole (threshold/confidence level).
+    - pixel_area (float): Area represented by each pixel 
+    """
+    data_mask = ~np.isnan(data_raster)
+    data_clean = data_raster[data_mask]
+    zones_clean = zone_raster[data_mask]
 
     unique_zones = np.unique(zones_clean)
 
     means = ndimage.mean(data_clean, labels=zones_clean, index=unique_zones)
     sd = ndimage.standard_deviation(data_clean, labels=zones_clean, index=unique_zones)
-    min = ndimage.minimum(data_clean, labels=zones_clean, index=unique_zones)
-    max = ndimage.maximum(data_clean, labels=zones_clean, index=unique_zones)
+    minimum = ndimage.minimum(data_clean, labels=zones_clean, index=unique_zones)
+    maximum = ndimage.maximum(data_clean, labels=zones_clean, index=unique_zones)
+    counts = ndimage.sum(np.ones_like(zones_clean), labels=zones_clean, index=unique_zones)
+    percentiles = {
+        int(zone): {
+            'p25': float(np.percentile(data_clean[zones_clean == zone], 25)),
+            'p75': float(np.percentile(data_clean[zones_clean == zone], 75))
+        }
+        for zone in unique_zones
+    }
 
+    # Combine stats into final dictionary
     return {
         int(zone): {
-            'mean': float(mean),
-            'std': float(s),
-            'min': float(mi),
-            'max': float(ma)
+            'value': float(value),
+            'mean': round(float(mean), 6),
+            'std': round(float(s), 6),
+            'min': round(float(mi), 6),
+            'max': round(float(ma), 6),
+            'p25': round(percentiles[int(zone)]['p25'], 6),
+            'p75': round(percentiles[int(zone)]['p75'], 6),
+            'area': round(float(count * pixel_area), 3),
         }
-        for zone, mean, s, mi, ma in zip(unique_zones, means, sd, min, max)
+        for zone, mean, s, mi, ma, count in zip(unique_zones, means, sd, minimum, maximum, counts)
     }
