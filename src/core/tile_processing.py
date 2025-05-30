@@ -13,7 +13,27 @@ class Parameter:
         self.dataset = utils.open_raster(raster_path)
         self.raster = utils.open_raster_band(self.dataset, 1)
         self.defaults = pr.Defaults()
+    
+    def median_filter(self, size=3, iterations=None):
+        """Apply a median filter to the raster data."""
+        num_median_filter = iterations if iterations else self.defaults.get_num_median_filter(self.name)
+        return pr.median_kernel_filter(self.raster, size=size, iterations=num_median_filter)
 
+    def threshold(self, raster):
+        """Apply the threshold to the raster data."""
+        thresholds = self.defaults.get_thresholds(self.name)
+        return pr.full_threshold(raster, thresholds)
+    
+    def majority_filter(self, raster_list, size=3, iterations=None):
+        """Apply a majority filter to the raster data."""
+        num_majority_filter = iterations if iterations else self.defaults.get_num_majority_filter(self.name)
+        return pr.list_majority_filter(raster_list, size=size, iterations=num_majority_filter)
+
+    def boundary_clean(self, raster_list, radius=1,  iterations=None):
+        """Apply a boundary clean filter to the raster data."""
+        num_boundary_clean = iterations if iterations else self.defaults.get_num_boundary_clean(self.name)
+        return pr.list_boundary_clean(raster_list, num_iterations=num_boundary_clean, radius=radius)
+    
     def coverage_mask(self):
         """Calculate the coverage mask for the parameter (True where raster is not NaN)."""
         return ~np.isnan(self.raster)
@@ -63,12 +83,6 @@ class TileParameterization:
         self.input_path = input_path
         self.output_path = output_path
         self.parameter = Parameter(param, input_path)
-        # self.profile = Raster(input_path)
-        self.defaults = pr.Defaults() 
-        if param is not None:
-            self.param = param
-        else:
-            self.param = None
 
     def threshold(self):
         # if len(self.param_tracking.median_filter) is 0:
@@ -101,12 +115,41 @@ class TileParameterization:
         boundary_clean_list = pr.list_boundary_clean(sieve_list, num_boundary_clean)
 
         labeled_raster_list = pr.list_label_clusters(boundary_clean_list)
+
+        # utils.save_raster(labeled_raster_list, self.output_path, "D2300_full_ZS3.tif", self.parameter.dataset.profile)
+        
         zonal_stats = pr.list_zonal_stats(labeled_raster_list, self.parameter)
         vector_list = pr.list_vectorize_dict(labeled_raster_list, zonal_stats, self.parameter)
         vector_stack = utils.merge_polygons(vector_list)
 
         utils.save_shapefile(vector_stack, self.output_path, "D2300_full_ZS3.shp")
 
+class SpectralCube:
+    """
+    A class to handle the spectral cube for a specific tile.
+    
+    Attributes:
+    -----------
+        path (str): The file path to the spectral cube data.
+        dataset: The opened spectral cube dataset.
+        raster: The raster band data.
+    """
+    def __init__(self, path):
+        self.path = path
+        self.dataset = utils.open_raster(path)
+        self.raster = utils.open_raster_band(self.dataset, 1)
+        self.transform = self.dataset.transform
+        self.crs = self.dataset.crs
+
+    def get_data(self):
+        """Return the spectral cube data."""
+        return self.raster
+    
+    def get_profile(self):
+        return self.dataset.profile 
+
+    def close(self):
+        self.dataset.close()
 # def get_file(path, param):
 #     """Get a file from the directory that matches the parameter."""
 #     files = os.listdir(path)

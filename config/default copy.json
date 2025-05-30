@@ -23,7 +23,7 @@
     "BD2250": {"thresholds": [], "num_median_filter": 1, "num_majority_filter": 1, "num_boundary_clean": 1},
     "BD2500": {"thresholds": [], "num_median_filter": 1, "num_majority_filter": 1, "num_boundary_clean": 1},
     "D2300": {
-      "thresholds": [0.0275],
+      "thresholds": [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275],
       "num_median_filter": 1,
       "num_majority_filter": 1,
       "num_boundary_clean": 1
