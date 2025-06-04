@@ -23,7 +23,7 @@
     "BD2250": {"thresholds": [], "num_median_filter": 1, "num_majority_filter": 1, "num_boundary_clean": 1},
     "BD2500": {"thresholds": [], "num_median_filter": 1, "num_majority_filter": 1, "num_boundary_clean": 1},
     "D2300": {
-      "thresholds": [0.0275],
+      "thresholds": [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275],
       "num_median_filter": 1,
       "num_majority_filter": 1,
       "num_boundary_clean": 1
@@ -55,34 +55,34 @@
     "BD2265": {"thresholds": [0], "num_median_filter": 1, "num_majority_filter": 1, "num_boundary_clean": 1},
     "LCPINDEX2": {"thresholds": [0], "num_median_filter": 1, "num_majority_filter": 1, "num_boundary_clean": 1}
   },
-  "INDIC_SETTINGS": {
+  "INDIC_SETTINGS": { 
     "FeMgSmectite": {
       "Param": {
         "D2300": [0.001, 0.005, 0.01],
         "BD1900_2": [0.01, 0.015, 0.02]
       },
       "Mask": {
-        "BD1500_2": 0.005
+        "BD1500_2": [0.005]
       }
     },
     "PolySulfate": {
       "Param": {
         "BD1900_2": [0.012, 0.015, 0.017],
-        "SINDEX2": [0.03, 0.035, 0.04]
+        "SINDEX2": [0.01, 0.015, 0.02]
       },
       "Mask": {
-        "BD1500_2": 0.005,
-        "BD2100_2": 0.01
+        "BD1500_2": [0.005],
+        "BD2100_2": [0.01]
       }
     },
     "MonoSulfate": {
       "Param": {
-        "BD2100_2": [0.01, 0.025, 0.045],
-        "SINDEX2": [0.025, 0.035, 0.05]
+        "BD2100_2": [0.001, 0.0025, 0.005],
+        "SINDEX2": [0.01, 0.015, 0.02]
       },
       "Mask": {
-        "BD1500_2": 0.005,
-        "BD1900_2": 0.012
+        "BD1500_2": [0.005],
+        "BD1900_2": [0.012]
       }
     },
     "Olivine": {
@@ -91,8 +91,8 @@
         "BD1300": [0.0]
       },
       "Mask": {
-        "RPEAK1": 0.9,
-        "BD1900_2": 0.012
+        "RPEAK1": [0.9],
+        "BD1900_2": [0.012]
       }
     },
     "LCP1": {
@@ -100,9 +100,9 @@
         "HCPINDEX2": [0.0]
       },
       "Mask": {
-        "BD1300": 0.0,
-        "BD1400": 0.01,
-        "BD2265": 0.01
+        "BD1300":[ 0.0],
+        "BD1400": [0.01],
+        "BD2265": [0.01]
       }
     },
     "Plag1": {
@@ -113,7 +113,7 @@
         "OLINDEX3": [-0.02]
       },
       "Mask": {
-        "HCPINDEX2": 0.0
+        "HCPINDEX2": [0.0]
       }
     }
   }

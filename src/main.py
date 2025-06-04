@@ -21,7 +21,7 @@ def main():
     #     name="PolySulfate"
     # ).process_indicator()
 
-    tp.ProcessingPipeline()
+    tp.ProcessingPipeline().process_file()
 
     
 

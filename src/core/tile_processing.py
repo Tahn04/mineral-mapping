@@ -91,14 +91,47 @@ class ProcessingPipeline:
         self.yaml_path = yaml_path
         self.config = cfg.config(self.yaml_path)
     
-    def process(self):
+    def process_file(self):
         """
         Process the parameter or indicator based on the name.
         """
-        if self.defaults.indicator_check(self.name):
-            self.process_indicator()
-        else:
-            self.process_parameter()
+        # self.config.processes is a dict, so iterate over its items
+        for process_name, process in self.config.processes.items():
+            print(f"Processing {process_name}: {process["name"]}")
+            
+            # Open file first?
+
+            processed_rasters = self.process_raster()
+
+            stats_dict = self.calculate_stats(processed_rasters)
+
+            self.process_vector(processed_rasters, stats_dict)
+        
+    def process_raster(self):
+        """
+        Process the raster data based on the configuration.
+
+        Returns:
+            List: A list of processed raster data
+        """
+        # Implement the logic to process raster data
+        pass
+
+    def calculate_stats(self):
+        """
+        Calculate statistics for the raster data based on the configuration.
+        """
+        # Implement the logic to calculate statistics
+        pass
+
+    def process_vector(self):
+        """
+        Process the  vector data based on the configuration.
+        """
+        # Implement the logic to process vector data
+        pass
+
+
 
 class TileParameterization:  
     """

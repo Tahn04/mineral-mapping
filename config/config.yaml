@@ -1,0 +1,69 @@
+processes:
+  parameterization: 
+    name: BD1500_2
+    path: data/BD1500.tif # Can be file or directory
+    processessing:
+      median:
+        size: 3
+        iterations: 1
+      thresholds: 
+        BD1500_2: [0.005, 0.0065, 0.008, 0.0095, 0.011, 0.0125, 0.014, 0.0155, 0.017, 0.0185]
+      masks:
+        
+      generalization:
+        majority:
+          size: 3
+          iterations: 1
+        boundary:
+          size: 3
+          iterations: 1
+        majority:
+          size: 3
+          iterations: 1
+        sieve:
+          size: 3
+          iterations: 1
+        boundary:
+          size: 3
+          iterations: 1
+    vectorization:
+      driver: SHP
+      output_dict: r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs"
+
+  vectorization:
+    name: FeMgSmectite
+    path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters # Can be file or directory
+    processessing:
+      median:
+        size: 3
+        iterations: 1
+      thresholds: 
+        D2300: [0.001, 0.005, 0.01]
+        BD1900_2: [0.01, 0.015, 0.02]
+      masks:
+        BD1500_2: [0.005]
+      generalization:
+        majority:
+          size: 3
+          iterations: 1
+        boundary:
+          size: 3
+          iterations: 1
+        majority:
+          size: 3
+          iterations: 1
+        sieve:
+          size: 3
+          iterations: 1
+        boundary:
+          size: 3
+          iterations: 1
+    vectorization:
+      driver: SHP
+      output_dict: r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs"
+# General workflow:
+#   - read data
+#   - meadian filter
+#   - apply thresholds
+#   - generalization
+#   - vectorization
