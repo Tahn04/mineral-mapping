@@ -1,5 +1,5 @@
 import os
-
+import gc
 import rasterio as rio
 from rasterio import features
 import numpy as np
@@ -91,64 +91,104 @@ def list_sieve_filter(array, threshold=9, connectedness=4, profile=None, iterati
     filtered_array = np.empty_like(array, dtype="uint8")
 
     transform = profile.get_transform()
-    crs = profile.get_crs()
+    crs_wkt = profile.get_crs().to_wkt()
 
     for b in range(bands):
         array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")
 
-        with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp1, \
-             tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp2:
+        # Initialize source in-memory dataset
+        src_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
+        src_ds.SetGeoTransform(transform.to_gdal())  # rasterio transform -> GDAL format
+        src_ds.SetProjection(crs_wkt)
+        src_ds.GetRasterBand(1).WriteArray(array_uint8)
 
-            tmp_src_path, tmp_dst_path = tmp1.name, tmp2.name
+        for _ in range(iterations):
+            # Create new MEM dataset for output
+            dst_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
+            dst_ds.SetGeoTransform(transform.to_gdal())
+            dst_ds.SetProjection(crs_wkt)
 
-            # Write band to file
-            with rio.open(
-                tmp_src_path, "w",
-                driver="GTiff",
-                height=height,
-                width=width,
-                count=1,
-                dtype="uint8",
-                crs=crs,
-                transform=transform,
-            ) as ds:
-                ds.write(array_uint8, 1)
+            # Apply sieve filter
+            gdal.SieveFilter(
+                srcBand=src_ds.GetRasterBand(1),
+                maskBand=None,
+                dstBand=dst_ds.GetRasterBand(1),
+                threshold=threshold,
+                connectedness=connectedness
+            )
 
-            # Apply sieve filtering iteratively
-            for i in range(iterations):
-                src_path = tmp_src_path if i % 2 == 0 else tmp_dst_path
-                dst_path = tmp_dst_path if i % 2 == 0 else tmp_src_path
+            # Swap for next iteration
+            src_ds = dst_ds
 
-                src_ds = gdal.Open(src_path, gdal.GA_ReadOnly)
-                dst_ds = gdal.GetDriverByName("GTiff").Create(
-                    dst_path,
-                    width,
-                    height,
-                    1,
-                    gdal.GDT_Byte
-                )
-
-                gdal.SieveFilter(
-                    srcBand=src_ds.GetRasterBand(1),
-                    maskBand=None,
-                    dstBand=dst_ds.GetRasterBand(1),
-                    threshold=threshold,
-                    connectedness=connectedness
-                )
-
-                src_ds = None
-                dst_ds = None
-
-            # Read final result
-            final_ds = gdal.Open(dst_path, gdal.GA_ReadOnly)
-            filtered_array[b] = final_ds.GetRasterBand(1).ReadAsArray()
-            final_ds = None
-
-            # # Clean up temp files
-            # os.unlink(tmp_src_path)
-            # os.unlink(tmp_dst_path)
+        # Read back result
+        filtered_array[b] = dst_ds.GetRasterBand(1).ReadAsArray()
 
     return filtered_array
+
+# def list_sieve_filter(array, threshold=9, connectedness=4, profile=None, iterations=1):
+#     array = np.asarray(array)
+#     bands, height, width = array.shape
+#     filtered_array = np.empty_like(array, dtype="uint8")
+
+#     transform = profile.get_transform()
+#     crs = profile.get_crs()
+
+#     for b in range(bands):
+#         array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")
+
+#         with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp1, \
+#              tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp2:
+
+#             tmp_src_path, tmp_dst_path = tmp1.name, tmp2.name
+
+#             # Write band to file
+#             with rio.open(
+#                 tmp_src_path, "w",
+#                 driver="GTiff",
+#                 height=height,
+#                 width=width,
+#                 count=1,
+#                 dtype="uint8",
+#                 crs=crs,
+#                 transform=transform,
+#             ) as ds:
+#                 ds.write(array_uint8, 1)
+
+#             # Apply sieve filtering iteratively
+#             for i in range(iterations):
+#                 src_path = tmp_src_path if i % 2 == 0 else tmp_dst_path
+#                 dst_path = tmp_dst_path if i % 2 == 0 else tmp_src_path
+
+#                 src_ds = gdal.Open(src_path, gdal.GA_ReadOnly)
+#                 dst_ds = gdal.GetDriverByName("GTiff").Create(
+#                     dst_path,
+#                     width,
+#                     height,
+#                     1,
+#                     gdal.GDT_Byte
+#                 )
+
+#                 gdal.SieveFilter(
+#                     srcBand=src_ds.GetRasterBand(1),
+#                     maskBand=None,
+#                     dstBand=dst_ds.GetRasterBand(1),
+#                     threshold=threshold,
+#                     connectedness=connectedness
+#                 )
+
+#                 src_ds = None
+#                 dst_ds = None
+
+#             # Read final result
+#             final_ds = gdal.Open(dst_path, gdal.GA_ReadOnly)
+#             filtered_array[b] = final_ds.GetRasterBand(1).ReadAsArray()
+#             final_ds = None
+
+#             # # Clean up temp files
+#             # os.unlink(tmp_src_path)
+#             # os.unlink(tmp_dst_path)
+
+#     return filtered_array
 
 #=====================================================#
 # Vector Operations
@@ -238,9 +278,9 @@ def zonal_stats(zone_raster, data_raster, value, pixel_area):
 
     means = ndimage.mean(data_clean, labels=zones_clean, index=unique_zones)
     sd = ndimage.standard_deviation(data_clean, labels=zones_clean, index=unique_zones)
-    minimum = ndimage.minimum(data_clean, labels=zones_clean, index=unique_zones)
-    maximum = ndimage.maximum(data_clean, labels=zones_clean, index=unique_zones)
     counts = ndimage.sum(np.ones_like(zones_clean), labels=zones_clean, index=unique_zones)
+    # minimum = ndimage.minimum(data_clean, labels=zones_clean, index=unique_zones)
+    # maximum = ndimage.maximum(data_clean, labels=zones_clean, index=unique_zones)
     percentiles = {
         int(zone): {
             'p25': float(np.percentile(data_clean[zones_clean == zone], 25)),
@@ -255,11 +295,11 @@ def zonal_stats(zone_raster, data_raster, value, pixel_area):
             'value': float(value),
             'mean': round(float(mean), 6),
             'std': round(float(s), 6),
-            'min': round(float(mi), 6),
-            'max': round(float(ma), 6),
+            # 'min': round(float(mi), 6),
+            # 'max': round(float(ma), 6),
             'p25': round(percentiles[int(zone)]['p25'], 6),
             'p75': round(percentiles[int(zone)]['p75'], 6),
             'area': round(float(count * pixel_area), 3),
         }
-        for zone, mean, s, mi, ma, count in zip(unique_zones, means, sd, minimum, maximum, counts)
+        for zone, mean, s, count in zip(unique_zones, means, sd, counts)
     }
