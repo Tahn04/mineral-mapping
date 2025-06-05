@@ -7,6 +7,8 @@ import bottleneck as bn
 from scipy.ndimage import generic_filter
 from tqdm import tqdm
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
 
 def get_thresholds(param):
     config_path = os.path.join("Code", "mineral-mapping", "config", "default.json")
@@ -191,26 +193,78 @@ def list_vectorize_dict(labeled_raster_list, stats_dict_list, param):
         results.append(result)
 
     return results
-def list_zonal_stats(labeled_raster_list, param):
 
+def _zonal_stats_wrapper(args):
+    labeled_raster, data_raster, threshold, pixel_area = args
+    return utils.zonal_stats(labeled_raster, data_raster, threshold, pixel_area)
+
+def list_zonal_stats(labeled_raster_list, param, max_workers=4):
     thresholds = param.get_thresholds()
     transform = param.get_transform()
 
     x_res = transform[0]
-    y_res = abs(transform[4]) # y res is negative for north-up images
+    y_res = abs(transform[4])  # y res is negative for north-up images
     pixel_area = x_res * y_res
 
-    index = 0
-    results = []
-    for labeled_raster in tqdm(labeled_raster_list, desc="Calculating zonal stats"):
-        result = utils.zonal_stats(labeled_raster, param.raster, thresholds[index], pixel_area)
-        results.append(result)
-        index += 1
-        
-    return results
+    # Ensure the lists are the same length
+    coverage_mask = param.coverage_mask()
+    thresholds = [0] + thresholds  # Create a new list, don't mutate in place
+    labeled_raster_list = [coverage_mask] + labeled_raster_list
 
-def list_label_clusters(raster_list):
-    return [
+    # Pair each labeled raster with its threshold
+    tasks = [
+        (labeled_raster, param.raster, threshold, pixel_area)
+        for labeled_raster, threshold in zip(labeled_raster_list, thresholds)
+    ]
+
+    results = [None] * len(tasks)
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_zonal_stats_wrapper, task): i
+            for i, task in enumerate(tasks)
+        }
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Zonal stats (parallel)"):
+            idx = futures[future]
+            results[idx] = future.result()
+
+    return results
+# def list_zonal_stats(labeled_raster_list, param):
+
+#     thresholds = param.get_thresholds()
+#     transform = param.get_transform()
+
+#     x_res = transform[0]
+#     y_res = abs(transform[4]) # y res is negative for north-up images
+#     pixel_area = x_res * y_res
+
+#     if len(labeled_raster_list) > len(thresholds):
+#         coverage_mask = param.coverage_mask()
+#         thresholds.insert(0, 0)  # Insert a default threshold if needed
+#         labeled_raster_list.insert(0, coverage_mask)  # Insert the mask at the beginning of the list
+
+#     index = 0
+#     results = []
+#     for labeled_raster in tqdm(labeled_raster_list, desc="Calculating zonal stats"):
+#         result = utils.zonal_stats(labeled_raster, param.raster, thresholds[index], pixel_area)
+#         results.append(result)
+#         index += 1
+        
+#     return results
+
+def list_label_clusters(raster_list, min_cluster_size=9):
+    labeled_rasters = [
         utils.label_clusters(raster)
         for raster in tqdm(raster_list, desc="Labeling clusters")
     ]
+    # cleaned_rasters = []
+    # for labeled_raster in labeled_rasters:
+    #     # Count pixels in each cluster
+    #     unique, counts = np.unique(labeled_raster, return_counts=True)
+    #     cluster_sizes = dict(zip(unique, counts))
+    #     # Create a mask for small clusters (excluding background 0)
+    #     mask = np.isin(labeled_raster, [label for label, size in cluster_sizes.items() if 0 != label and size < min_cluster_size])
+    #     # Set small clusters to zero
+    #     cleaned = labeled_raster.copy()
+    #     cleaned[mask] = 0
+    #     cleaned_rasters.append(cleaned)
+    return labeled_rasters

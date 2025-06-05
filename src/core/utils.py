@@ -277,9 +277,9 @@ def zonal_stats(zone_raster, data_raster, value, pixel_area):
     unique_zones = np.unique(zones_clean)
 
     means = ndimage.mean(data_clean, labels=zones_clean, index=unique_zones)
-    sd = ndimage.standard_deviation(data_clean, labels=zones_clean, index=unique_zones)
+    # sd = ndimage.standard_deviation(data_clean, labels=zones_clean, index=unique_zones)
     counts = ndimage.sum(np.ones_like(zones_clean), labels=zones_clean, index=unique_zones)
-    # minimum = ndimage.minimum(data_clean, labels=zones_clean, index=unique_zones)
+    minimum = ndimage.minimum(data_clean, labels=zones_clean, index=unique_zones)
     # maximum = ndimage.maximum(data_clean, labels=zones_clean, index=unique_zones)
     percentiles = {
         int(zone): {
@@ -294,12 +294,12 @@ def zonal_stats(zone_raster, data_raster, value, pixel_area):
         int(zone): {
             'value': float(value),
             'mean': round(float(mean), 6),
-            'std': round(float(s), 6),
-            # 'min': round(float(mi), 6),
+            # 'std': round(float(s), 6),
+            'min': round(float(mi), 6),
             # 'max': round(float(ma), 6),
             'p25': round(percentiles[int(zone)]['p25'], 6),
             'p75': round(percentiles[int(zone)]['p75'], 6),
             'area': round(float(count * pixel_area), 3),
         }
-        for zone, mean, s, count in zip(unique_zones, means, sd, counts)
+        for mi, zone, mean, count in zip(minimum, unique_zones, means, counts)
     }

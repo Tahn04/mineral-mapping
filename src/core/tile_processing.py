@@ -7,6 +7,179 @@ import core.utils as utils
 import core.processing as pr
 import numpy as np
 
+class ProcessingPipeline:
+    """
+    A class to handle the complete processing pipeline dictated by a YAML file.
+    
+    Attributes:
+    -----------
+        yaml_file (str): The path to the YAML file containing the processing configuration.
+    """
+    def __init__(self, yaml_path=None):
+        self.yaml_path = yaml_path
+        self.config = cfg.config(self.yaml_path)
+        self.crs = None
+        self.transform = None
+    
+    def process_file(self):
+        """
+        Process the parameter or indicator based on the name.
+        """
+        # self.config.processes is a dict, so iterate over its items
+        for process_name, process in self.config.processes.items():
+            print(f"Processing {process_name}: {process["name"]}")
+
+            self.dir_path = process["path"]
+
+            param_names = self.get_param_names(process)
+            mask_names = self.get_mask_names(process)
+            
+            param_path_dict = self.get_file_paths(param_names)
+            mask_path_dict = self.get_file_paths(mask_names)
+
+            param_raster_list = self.open_rasters(param_path_dict)
+            mask_raster_list = self.open_rasters(mask_path_dict)
+
+            processed_rasters = self.process_raster(param_raster_list, process)
+
+            stats_dict = self.calculate_stats(processed_rasters)
+
+            self.process_vector(processed_rasters, stats_dict)
+    
+    def open_rasters(self, files_dict):
+        """
+        Open a raster file and return the dataset. Also assigns spatial info to the class.
+        
+        Args:
+            raster_path (str): The path to the raster file.
+        
+        Returns:
+            List: The list of raster
+        """
+        raster_list = []
+        for param, raster_path in files_dict.items():
+            print(f"Opening raster for parameter {param} from {raster_path}")
+
+            dataset = utils.open_raster(raster_path)
+            raster = utils.open_raster_band(dataset, 1)
+            raster_list.append(raster)
+
+            if self.crs is None and self.transform is None:
+                self.assign_spatial_info(dataset)
+        return raster_list
+    
+    def assign_spatial_info(self, dataset):
+        """
+        Assigns the spatial information from the dataset to the class attributes.
+        
+        Args:
+            dataset: The raster dataset to extract spatial information from.
+        """
+        self.crs = dataset.crs
+        self.transform = dataset.transform
+        print(f"Assigned CRS: {self.crs}, Transform: {self.transform}")
+
+    def threshold(self, raster, process):
+        """
+        Applies median filter and thresholds to the raster data and return a list.
+        
+        Args:
+            raster: The raster data to apply thresholds to.
+            thresholds: The thresholds to apply.
+        
+        Returns:
+            List: A list of thresholded raster data
+        """
+        raster_list = []
+        median_filter_size = process["thresholds"]["median"]["size"]
+        median_filter_iterations = process["thresholds"]["median"]["iterations"]
+
+        median_filtered = pr.median_kernel_filter(raster, size=median_filter_size, iterations=median_filter_iterations)
+        return pr.full_threshold(median_filtered, thresholds)
+        
+    def process_raster(self, raster, process=None):
+        """
+        Process the raster data based on the configuration.
+
+        Returns:
+            List: A list of processed raster data
+        """
+        process_config = process["pipeline"]
+        for task in process_config:
+            if "median" in task["task"]:
+                print(f"Applying median filter")
+                raster_list = pr.list_majority_filter(raster_list, iterations=task["task"]["iterations"], size=task["task"]["size"])
+            elif "threshold" in task["task"]:
+                print(f"Applying threshold ")
+                # raster_list = pr.list_threshold(raster_list, process["thresholds"]["values"])
+                raster_list = pr.full_threshold(raster, thresholds)
+            elif "majority" in task["task"]:    
+                print(f"Applying majority filter")
+                # raster_list = pr.list_majority_filter(raster_list, size=3, iterations=process["majority_filter"]["iterations"])
+            elif "boundary" in task["task"]:
+                print(f"Applying boundary clean filter ")
+                # raster_list = pr.list_boundary_clean(raster_list, iterations=process["boundary_clean"]["iterations"], radius=process["boundary_clean"]["radius"])
+            elif "sieve" in task["task"]:
+                print(f"Applying sieve filter ")
+                # raster_list = pr.list_sieve_filter(raster_list, threshold=process["sieve_filter"]["threshold"], profile=self, iterations=process["sieve_filter"]["iterations"])
+
+    def calculate_stats(self):
+        """
+        Calculate statistics for the raster data based on the configuration.
+        """
+        # Implement the logic to calculate statistics
+        pass
+
+    def process_vector(self):
+        """
+        Process the  vector data based on the configuration.
+        """
+        # Implement the logic to process vector data
+        pass
+
+    def get_param_names(self, process):
+        """
+        Get the parameter names from the process configuration.
+        """
+        return list(process["thresholds"]["parameters"].keys())
+
+    def get_mask_names(self, process):
+        """
+        Get the file paths of the raster data based on the configuration.
+        """
+        # Implement the logic to get raster file paths
+        if "masks" not in process["thresholds"] or process["thresholds"]["masks"] is None:
+            print("No masks found in the process configuration.")
+            return []
+        return list(process["thresholds"]["masks"].keys())
+
+    def get_file_paths(self, names):
+        """
+        Returns the file path of the parameter raster or paths for indicators.
+        """
+        files = os.listdir(self.dir_path)
+        files_dict = {}
+
+        for param in names:
+            file_path = self._find_file(files, param)
+            if file_path:
+                files_dict[param] = file_path
+            else:
+                print(f"File for parameter {param} not found in {self.dir_path}")        
+
+        return files_dict
+
+    def _find_file(self, files, param):
+        """
+        Helper function to find the file for a given parameter in the directory.
+        """
+        pattern = re.compile(rf".*{param}.*\.IMG$")
+        for f in files:
+            match = pattern.match(f)
+            if match:
+                return os.path.join(self.dir_path, f)
+        return None
+
 class Parameter:
     def __init__(self, name: str, raster_path: str, defaults=None):
         self.name = name
@@ -71,6 +244,14 @@ class Parameter:
     def get_num_boundary_clean(self):   
         """Return the number of boundary clean iterations for the parameter."""
         return self.defaults.get_num_boundary_clean(self.name)
+    
+    def mask_list(self, raster_list):
+        """Return a list of masked rasters based on the coverage mask."""
+        coverage_mask = self.coverage_mask()
+        for i in range(len(raster_list)):
+            raster_list[i] = utils.mask(raster_list[i], coverage_mask)
+        
+        return raster_list
 
     def close(self):
         """Close the raster dataset."""
@@ -78,60 +259,6 @@ class Parameter:
             self.dataset.close()
             self.dataset = None
             self.raster = None
-
-class ProcessingPipeline:
-    """
-    A class to handle the complete processing pipeline dictated by a YAML file.
-    
-    Attributes:
-    -----------
-        yaml_file (str): The path to the YAML file containing the processing configuration.
-    """
-    def __init__(self, yaml_path=None):
-        self.yaml_path = yaml_path
-        self.config = cfg.config(self.yaml_path)
-    
-    def process_file(self):
-        """
-        Process the parameter or indicator based on the name.
-        """
-        # self.config.processes is a dict, so iterate over its items
-        for process_name, process in self.config.processes.items():
-            print(f"Processing {process_name}: {process["name"]}")
-            
-            # Open file first?
-
-            processed_rasters = self.process_raster()
-
-            stats_dict = self.calculate_stats(processed_rasters)
-
-            self.process_vector(processed_rasters, stats_dict)
-        
-    def process_raster(self):
-        """
-        Process the raster data based on the configuration.
-
-        Returns:
-            List: A list of processed raster data
-        """
-        # Implement the logic to process raster data
-        pass
-
-    def calculate_stats(self):
-        """
-        Calculate statistics for the raster data based on the configuration.
-        """
-        # Implement the logic to calculate statistics
-        pass
-
-    def process_vector(self):
-        """
-        Process the  vector data based on the configuration.
-        """
-        # Implement the logic to process vector data
-        pass
-
-
 
 class TileParameterization:  
     """
@@ -168,11 +295,15 @@ class TileParameterization:
 
         # Second filters
         majority_filtered_3 = param.majority_filter(boundary_cleaned, size=3)
-        # utils.show_raster((majority_filtered_3[0]), title=f"{param.name} - majority_filtered_3")
         sieve_filtered = param.sieve_filter(majority_filtered_3)
-        # utils.show_raster((sieve_filtered[0]), title=f"{param.name} - sieve_filtered")
-        final_rater_list = param.boundary_clean(sieve_filtered)
-        # utils.show_raster((final_rater_list[0]), title=f"{param.name} - Final Processed Raster")   
+        
+        # boundary_cleaned2 = param.boundary_clean(sieve_filtered)
+        # # utils.show_raster((boundary_cleaned2[0]), title=f"{param.name} - boundary_cleaned2")
+
+        final_rater_list = param.mask_list(sieve_filtered)
+        # utils.show_raster((final_rater_list[0]), title=f"{param.name} - Final Processed Raster")
+
+
         return final_rater_list
 
     def process_parameter(self):
@@ -194,7 +325,7 @@ class TileParameterization:
         vector_list = pr.list_vectorize_dict(labeled_raster_list, zonal_stats, param)
         vector_stack = utils.merge_polygons(vector_list)
 
-        utils.save_shapefile(vector_stack, self.output_path, f"{self.name}_stack.shp")
+        utils.save_shapefile(vector_stack, self.output_path, f"t1250_{self.name}_stack.shp")
 
     def process_indicator(self):
             """
@@ -320,30 +451,30 @@ class TileParameterization:
         return None
 
 
-class SpectralCube:
+# class SpectralCube:
 
-    """
-    A class to handle the spectral cube for a specific tile.
+#     """
+#     A class to handle the spectral cube for a specific tile.
     
-    Attributes:
-    -----------
-        path (str): The file path to the spectral cube data.
-        dataset: The opened spectral cube dataset.
-        raster: The raster band data.
-    """
-    def __init__(self, path):
-        self.path = path
-        self.dataset = utils.open_raster(path)
-        self.raster = utils.open_raster_band(self.dataset, 1)
-        self.transform = self.dataset.transform
-        self.crs = self.dataset.crs
+#     Attributes:
+#     -----------
+#         path (str): The file path to the spectral cube data.
+#         dataset: The opened spectral cube dataset.
+#         raster: The raster band data.
+#     """
+#     def __init__(self, path):
+#         self.path = path
+#         self.dataset = utils.open_raster(path)
+#         self.raster = utils.open_raster_band(self.dataset, 1)
+#         self.transform = self.dataset.transform
+#         self.crs = self.dataset.crs
 
-    def get_data(self):
-        """Return the spectral cube data."""
-        return self.raster
+#     def get_data(self):
+#         """Return the spectral cube data."""
+#         return self.raster
     
-    def get_profile(self):
-        return self.dataset.profile 
+#     def get_profile(self):
+#         return self.dataset.profile 
 
-    def close(self):
-        self.dataset.close()
+#     def close(self):
+#         self.dataset.close()

@@ -7,21 +7,22 @@ def main():
     """
     # path = r"Mars_Data\T1250_demo_parameters"
     dir_path = r"Mars_Data\T1250_demo_parameters"
+    MC_path = r"Mars_Data\MC13_demo_parameters"
     output_path = r"Code\mineral-mapping\outputs"
 
     # tp.TileParameterization(
     #     dir_path,
     #     output_path,
-    #     name="D2300"
+    #     name="BD1900_2"
     # ).process_parameter()
 
-    # tp.TileParameterization(
-    #     dir_path,
-    #     output_path,
-    #     name="PolySulfate"
-    # ).process_indicator()
+    tp.TileParameterization(
+        dir_path,
+        output_path,
+        name="MonoSulfate"
+    ).process_indicator()
 
-    tp.ProcessingPipeline().process_file()
+    # tp.ProcessingPipeline().process_file()
 
     
 
