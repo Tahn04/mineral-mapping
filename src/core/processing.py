@@ -111,7 +111,7 @@ def full_threshold(raster, thresholds):
         
     return results
 
-def median_kernel_filter(raster, size=3, iterations=1):
+def median_kernel_filter(raster, iterations=1, size=3):
     def bn_nanmedian(arr):
         return bn.nanmedian(arr)
     for i in tqdm(range(iterations), desc="Applying median filter"):
@@ -179,14 +179,10 @@ def restructure_stats(stats_dict_list):
 
     return result
 
-def list_vectorize_dict(labeled_raster_list, stats_dict_list, param):
+def list_vectorize_dict(labeled_raster_list, stats_dict_list, crs, transform):
     """
     Vectorizes a list of labeled rasters using a list of stats dictionaries.
     """
-    transform = param.get_transform()
-    crs = param.get_crs()
-
-    
     results = []
     for labeled_raster, stats_dict in tqdm(zip(labeled_raster_list, stats_dict_list), total=len(labeled_raster_list), desc="Vectorizing with stats"):
         result = utils.vectorize_dict(labeled_raster, stats_dict, transform, crs)

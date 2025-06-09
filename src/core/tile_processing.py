@@ -20,6 +20,7 @@ class ProcessingPipeline:
         self.config = cfg.config(self.yaml_path)
         self.crs = None
         self.transform = None
+        self.mask = None
     
     def process_file(self):
         """
@@ -31,42 +32,148 @@ class ProcessingPipeline:
 
             self.dir_path = process["path"]
 
-            param_names = self.get_param_names(process)
-            mask_names = self.get_mask_names(process)
-            
-            param_path_dict = self.get_file_paths(param_names)
-            mask_path_dict = self.get_file_paths(mask_names)
+            param_list = self.init_parameters(process)
 
-            param_raster_list = self.open_rasters(param_path_dict)
-            mask_raster_list = self.open_rasters(mask_path_dict)
+            processed_rasters = self.process_parameters(process, param_list)
+            utils.show_raster(processed_rasters[0], title=f"{process_name} - Processed Raster 0")
+            utils.show_raster(processed_rasters[1], title=f"{process_name} - Processed Raster 1")
 
-            processed_rasters = self.process_raster(param_raster_list, process)
 
-            stats_dict = self.calculate_stats(processed_rasters)
+            zonal_stats = self.calculate_stats(process, processed_rasters, param_list)
 
-            self.process_vector(processed_rasters, stats_dict)
-    
-    def open_rasters(self, files_dict):
+            self.process_vector(process, processed_rasters, zonal_stats)
+
+    def init_parameters(self, process):
         """
-        Open a raster file and return the dataset. Also assigns spatial info to the class.
+        Initialize the parameters based on the process configuration.
         
         Args:
-            raster_path (str): The path to the raster file.
+            process: The process configuration dictionary.
         
         Returns:
-            List: The list of raster
+            List: A list of Parameter objects initialized with the raster data.
         """
-        raster_list = []
-        for param, raster_path in files_dict.items():
-            print(f"Opening raster for parameter {param} from {raster_path}")
+        param_file_dicts = self.get_file_paths(self.get_param_names(process))
+        mask_file_dicts = self.get_file_paths(self.get_mask_names(process))
 
-            dataset = utils.open_raster(raster_path)
-            raster = utils.open_raster_band(dataset, 1)
-            raster_list.append(raster)
+        param_list = []
+        for idx, (param_name, file_path) in enumerate(param_file_dicts.items()):
+            param = Parameter(param_name, file_path)
+            if idx == 0:
+                self.assign_spatial_info(param.dataset)
+                self.mask = param.coverage_mask()
+            param_list.append(param)
+        
+        for mask_name, file_path in mask_file_dicts.items():
+            mask_param = Parameter(mask_name, file_path)
+            mask_param.mask = True
+            param_list.append(mask_param)
+        
+        return param_list
+    
+    def process_parameters(self, process, param_list):
+        """
+        Process the raster data based on the configuration.
 
-            if self.crs is None and self.transform is None:
-                self.assign_spatial_info(dataset)
+        Returns:
+            List: A list of processed raster data
+        """
+        raster_list = self.threshold(process, param_list)
+
+        # boolean filters
+        for task in process["pipeline"]: 
+            if "majority" in task["task"]:    
+                print(f"Applying majority filter")
+                iterations = self.get_task_param(task, "iterations")
+                size = self.get_task_param(task, "size")
+
+                iterations = 1 if iterations is None else iterations
+                size = 3 if size is None else size 
+                raster_list = pr.list_majority_filter(raster_list, iterations=iterations, size=size)
+
+            elif "boundary" in task["task"]:
+                print(f"Applying boundary clean filter ")
+                # raster_list = pr.list_boundary_clean(raster_list, iterations=process["boundary_clean"]["iterations"], radius=process["boundary_clean"]["radius"])
+
+            elif "sieve" in task["task"]:
+                print(f"Applying sieve filter ")
+                threshold = self.get_task_param(task, "threshold")
+                iterations = self.get_task_param(task, "iterations")
+                connectedness = self.get_task_param(task, "connectedness")
+                
+                threshold = 9 if threshold is None else threshold
+                iterations = 1 if iterations is None else iterations
+                connectedness = 4 if connectedness is None else connectedness
+                
+                raster_list = utils.list_sieve_filter(raster_list, iterations=iterations, threshold=threshold, crs=self.crs, transform=self.transform)
+
+        for i in range(len(raster_list)):
+            raster_list[i] = raster_list[i] * self.mask
+        raster_list = list(raster_list)
+        raster_list.insert(0, self.mask)
         return raster_list
+
+    def threshold(self, process, param_list):
+        """
+        Applies median filter, thresholds, and then masks the data.
+        
+        Args:
+            process: The process configuration dictionary.
+            param_list: A list of Parameter objects initialized with the raster data.
+        
+        Returns:
+            List: A list of processed raster data at the number of desired intervals.
+        """
+        param_thresholded_list = []
+        masks_thresholded_list = []
+        for param in param_list:
+            if not isinstance(param, Parameter):
+                raise TypeError(f"Expected Parameter object, got {type(param)}")
+            
+            # Apply median filter
+            median_filter = param.median_filter(iterations=process["thresholds"]["median"]["iterations"], size=process["thresholds"]["median"]["size"])
+            median_filter = param.raster
+            if param.mask:
+                masks_thresholded_list.append(param.threshold(median_filter, process["thresholds"]["masks"][param.name]))
+            else:
+                param_thresholded_list.append(param.threshold(median_filter, process["thresholds"]["parameters"][param.name]))
+            
+        # Combine the thresholded rasters
+        if len(masks_thresholded_list) > 0 or len(param_thresholded_list) > 1:
+            param_levels = list(zip(*param_thresholded_list))
+
+            combined_mask = np.logical_not(np.logical_or.reduce(masks_thresholded_list)).astype(np.uint32)
+            
+            if combined_mask.ndim == 3 and combined_mask.shape[0] == 1: # Check if alwasy true
+                combined_mask = np.squeeze(combined_mask, axis=0)
+
+            raster_list = [
+                np.prod(level_rasters, axis=0)
+                for level_rasters in param_levels
+            ]
+            
+            for i in range(len(raster_list)):
+                if raster_list[i].ndim == 3 and raster_list[i].shape[0] == 1: # Check if alwasy false
+                    raster_list[i] = np.squeeze(raster_list[i], axis=0)
+                raster_list[i] = raster_list[i] * combined_mask
+
+            return raster_list
+        
+        return param_thresholded_list[0]
+    
+    def get_task_param(self, task, parameter):
+        """
+        Get the parameters for a specific task from the process configuration.
+        
+        Args:
+            task: The task configuration dictionary.
+        
+        Returns:
+            Dict: A dictionary of parameters for the task.
+        """
+        if parameter in task:
+            return task[parameter]
+        return None
     
     def assign_spatial_info(self, dataset):
         """
@@ -78,64 +185,37 @@ class ProcessingPipeline:
         self.crs = dataset.crs
         self.transform = dataset.transform
         print(f"Assigned CRS: {self.crs}, Transform: {self.transform}")
-
-    def threshold(self, raster, process):
-        """
-        Applies median filter and thresholds to the raster data and return a list.
-        
-        Args:
-            raster: The raster data to apply thresholds to.
-            thresholds: The thresholds to apply.
-        
-        Returns:
-            List: A list of thresholded raster data
-        """
-        raster_list = []
-        median_filter_size = process["thresholds"]["median"]["size"]
-        median_filter_iterations = process["thresholds"]["median"]["iterations"]
-
-        median_filtered = pr.median_kernel_filter(raster, size=median_filter_size, iterations=median_filter_iterations)
-        return pr.full_threshold(median_filtered, thresholds)
-        
-    def process_raster(self, raster, process=None):
-        """
-        Process the raster data based on the configuration.
-
-        Returns:
-            List: A list of processed raster data
-        """
-        process_config = process["pipeline"]
-        for task in process_config:
-            if "median" in task["task"]:
-                print(f"Applying median filter")
-                raster_list = pr.list_majority_filter(raster_list, iterations=task["task"]["iterations"], size=task["task"]["size"])
-            elif "threshold" in task["task"]:
-                print(f"Applying threshold ")
-                # raster_list = pr.list_threshold(raster_list, process["thresholds"]["values"])
-                raster_list = pr.full_threshold(raster, thresholds)
-            elif "majority" in task["task"]:    
-                print(f"Applying majority filter")
-                # raster_list = pr.list_majority_filter(raster_list, size=3, iterations=process["majority_filter"]["iterations"])
-            elif "boundary" in task["task"]:
-                print(f"Applying boundary clean filter ")
-                # raster_list = pr.list_boundary_clean(raster_list, iterations=process["boundary_clean"]["iterations"], radius=process["boundary_clean"]["radius"])
-            elif "sieve" in task["task"]:
-                print(f"Applying sieve filter ")
-                # raster_list = pr.list_sieve_filter(raster_list, threshold=process["sieve_filter"]["threshold"], profile=self, iterations=process["sieve_filter"]["iterations"])
-
-    def calculate_stats(self):
+    
+    def calculate_stats(self, process, raster_list, param_list):
         """
         Calculate statistics for the raster data based on the configuration.
         """
-        # Implement the logic to calculate statistics
-        pass
+        labeled_raster_list = pr.list_label_clusters(raster_list)
 
-    def process_vector(self):
+        zonal_stats = {}
+        for param in param_list:
+            if not isinstance(param, Parameter):
+                raise TypeError(f"Expected Parameter object, got {type(param)}")
+            # if param.mask:
+            #     continue
+            zonal_stats[param.name] = pr.list_zonal_stats(labeled_raster_list, param)
+
+        if pr.check_stats_dict(zonal_stats):
+            # Restructure the zonal stats dictionary
+            zonal_stats = pr.restructure_stats(zonal_stats)
+
+        return zonal_stats
+
+    def process_vector(self, process, raster_list, zonal_stats):
         """
         Process the  vector data based on the configuration.
         """
-        # Implement the logic to process vector data
-        pass
+        labeled_raster_list = pr.list_label_clusters(raster_list)
+
+        vector_list = pr.list_vectorize_dict(labeled_raster_list, zonal_stats, crs=self.crs, transform=self.transform)
+        vector_stack = utils.merge_polygons(vector_list)
+
+        utils.save_shapefile(vector_stack, process["vectorization"]["output_dict"], f"{process["name"]}_new_code2.shp")
 
     def get_param_names(self, process):
         """
@@ -179,6 +259,32 @@ class ProcessingPipeline:
             if match:
                 return os.path.join(self.dir_path, f)
         return None
+    
+    # def open_rasters(self, process):
+    #     """
+    #     Open a raster file and return the dataset. Also assigns spatial info to the class.
+        
+    #     Args:
+    #         raster_path (str): The path to the raster file.
+        
+    #     Returns:
+    #         List: The list of raster
+    #     """
+    #     param_names = self.get_param_names(process)
+    #     param_path_dict = self.get_file_paths(param_names)
+        
+    #     raster_list = []
+    #     for param, raster_path in param_path_dict.items():
+    #         print(f"Opening raster for parameter {param} from {raster_path}")
+
+    #         dataset = utils.open_raster(raster_path)
+    #         raster = utils.open_raster_band(dataset, 1)
+    #         raster_list.append(raster)
+
+    #         if self.crs is None and self.transform is None:
+    #             self.assign_spatial_info(dataset)
+    #     return raster_list
+    
 
 class Parameter:
     def __init__(self, name: str, raster_path: str, defaults=None):
@@ -188,19 +294,21 @@ class Parameter:
         self.raster = utils.open_raster_band(self.dataset, 1)
         self.defaults = defaults if defaults else pr.Defaults()
         self._median_filter_result = None
+        self.mask = False
     
     def median_filter(self, size=3, iterations=None):
         """Apply a median filter to the raster data."""
         if self._median_filter_result is None:
             num_median_filter = iterations if iterations else self.defaults.get_num_median_filter(self.name)
-            self._median_filter_result = pr.median_kernel_filter(self.raster, size=size, iterations=num_median_filter)
+            self._median_filter_result = pr.median_kernel_filter(self.raster, iterations=num_median_filter, size=size)
         return self._median_filter_result
 
-    def threshold(self, raster=None):
+    def threshold(self, raster=None, thresholds=None):
         """Apply thresholds to the raster data and return a list."""
         if raster is None:
             raster = self.raster
-        thresholds = self.defaults.get_thresholds(self.name)
+        if thresholds is None:
+            thresholds = self.defaults.get_thresholds(self.name)
         return pr.full_threshold(raster, thresholds)
     
     def majority_filter(self, raster_list, size=3, iterations=None):
@@ -283,30 +391,32 @@ class TileParameterization:
         """
         # Apply median filter
         median_filter = param.median_filter()
-        utils.save_raster(median_filter, self.output_path, "prog_median_filter.tif", param.dataset.profile)
+        # utils.save_raster(median_filter, self.output_path, "prog_median_filter.tif", param.dataset.profile)
+
         # Apply threshold
         thresholded = param.threshold(median_filter)
-        utils.save_raster(thresholded[0], self.output_path, "prog_thresholded_0.tif", param.dataset.profile)
+        # utils.save_raster(thresholded[0], self.output_path, "prog_thresholded_0.tif", param.dataset.profile)
+
         # Apply majority filter
         majority_filtered = param.majority_filter(thresholded)
-        utils.save_raster(majority_filtered[0], self.output_path, "prog_majority_filtered_0.tif", param.dataset.profile)
+        # utils.save_raster(majority_filtered[0], self.output_path, "prog_majority_filtered_0.tif", param.dataset.profile)
 
         # Apply boundary clean filter
         boundary_cleaned = param.boundary_clean(majority_filtered)
-        utils.save_raster(boundary_cleaned[0], self.output_path, "prog_boundary_cleaned_0.tif", param.dataset.profile)
+        # utils.save_raster(boundary_cleaned[0], self.output_path, "prog_boundary_cleaned_0.tif", param.dataset.profile)
 
         # Second filters
-        majority_filtered_3 = param.majority_filter(boundary_cleaned, size=3)
-        utils.save_raster(majority_filtered_3[0], self.output_path, "prog_majority_filtered_3_0.tif", param.dataset.profile)
+        majority_filtered_3 = param.majority_filter(boundary_cleaned, iterations=3)
+        # utils.save_raster(majority_filtered_3[0], self.output_path, "prog_majority_filtered_3_0.tif", param.dataset.profile)
 
         sieve_filtered = param.sieve_filter(majority_filtered_3)
-        utils.save_raster(sieve_filtered[0], self.output_path, "prog_sieve_filtered_0.tif", param.dataset.profile)
+        # utils.save_raster(sieve_filtered[0], self.output_path, "prog_sieve_filtered_0.tif", param.dataset.profile)
 
         # boundary_cleaned2 = param.boundary_clean(sieve_filtered)
         # # utils.show_raster((boundary_cleaned2[0]), title=f"{param.name} - boundary_cleaned2")
 
         final_rater_list = param.mask_list(sieve_filtered)
-        utils.save_raster(final_rater_list[0], self.output_path, "prog_final_rater_list_0.tif", param.dataset.profile)
+        # utils.save_raster(final_rater_list[0], self.output_path, "prog_final_rater_list_0.tif", param.dataset.profile)
 
         # utils.show_raster((final_rater_list[0]), title=f"{param.name} - Final Processed Raster")
 
@@ -456,32 +566,3 @@ class TileParameterization:
             if match:
                 return os.path.join(self.dir_path, f)
         return None
-
-
-# class SpectralCube:
-
-#     """
-#     A class to handle the spectral cube for a specific tile.
-    
-#     Attributes:
-#     -----------
-#         path (str): The file path to the spectral cube data.
-#         dataset: The opened spectral cube dataset.
-#         raster: The raster band data.
-#     """
-#     def __init__(self, path):
-#         self.path = path
-#         self.dataset = utils.open_raster(path)
-#         self.raster = utils.open_raster_band(self.dataset, 1)
-#         self.transform = self.dataset.transform
-#         self.crs = self.dataset.crs
-
-#     def get_data(self):
-#         """Return the spectral cube data."""
-#         return self.raster
-    
-#     def get_profile(self):
-#         return self.dataset.profile 
-
-#     def close(self):
-#         self.dataset.close()

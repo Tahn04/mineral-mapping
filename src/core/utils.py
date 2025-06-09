@@ -85,13 +85,12 @@ def boundary_clean(raster_array, classes=None, iterations=2, radius=3):
 
     return result
 
-def list_sieve_filter(array, threshold=9, connectedness=4, profile=None, iterations=1):
+def list_sieve_filter(array, iterations=1, threshold=9, connectedness=4, crs=None, transform=None):
     array = np.asarray(array)
     bands, height, width = array.shape
     filtered_array = np.empty_like(array, dtype="uint8")
 
-    transform = profile.get_transform()
-    crs_wkt = profile.get_crs().to_wkt()
+    crs_wkt = crs.to_wkt()
 
     for b in range(bands):
         array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")

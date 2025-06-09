@@ -10,11 +10,11 @@ def main():
     MC_path = r"Mars_Data\MC13_demo_parameters"
     output_path = r"Code\mineral-mapping\outputs"
 
-    tp.TileParameterization(
-        dir_path,
-        output_path,
-        name="D2300"
-    ).process_parameter()
+    # tp.TileParameterization(
+    #     dir_path,
+    #     output_path,
+    #     name="D2300"
+    # ).process_parameter()
 
     # tp.TileParameterization(
     #     dir_path,
@@ -22,7 +22,7 @@ def main():
     #     name="MonoSulfate"
     # ).process_indicator()
 
-    # tp.ProcessingPipeline().process_file()
+    tp.ProcessingPipeline().process_file()
     
 
 #path = r"Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG"
