@@ -41,9 +41,17 @@ def open_raster(raster_path):
 def open_raster_band(raster, band_number):
     return raster.read(band_number, masked=True).filled(np.nan)
 
-# def save_raster(raster, output_path, profile):
-#     with rio.open(output_path, 'w', **profile) as dst:
-#         dst.write(raster, 1)
+def save_raster(raster, output_path, file_name, profile):
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+    full_path = os.path.join(output_path, file_name)
+    raster = np.asarray(raster)
+    with rio.open(full_path, 'w', **profile) as dst:
+        # If raster is 2D, add a band axis
+        if raster.ndim == 2:
+            dst.write(raster, 1)
+        else:
+            dst.write(raster)
 
 #=====================================================#
 # Processing Functions

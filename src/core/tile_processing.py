@@ -93,19 +93,26 @@ class TileParameterization:
 
         # first filters
         maj_filt_list = pr.list_majority_filter(thresholded, num_majority_filter)
+        utils.save_raster(maj_filt_list[0], self.output_path, "working2_maj_filt_0.tif", self.parameter.dataset.profile)
         boundary_clean_list = pr.list_boundary_clean(maj_filt_list, num_boundary_clean)
+        utils.save_raster(boundary_clean_list[0], self.output_path, "working2_boundary_clean_0.tif", self.parameter.dataset.profile)
 
         # second filters
         maj3_filt_list = pr.list_majority_filter(boundary_clean_list, 3)
+        utils.save_raster(maj3_filt_list[0], self.output_path, "working2_maj3_filt_0.tif", self.parameter.dataset.profile)
+
         sieve_list = utils.list_sieve_filter(maj3_filt_list, profile=self.parameter)
+        utils.save_raster(sieve_list[0], self.output_path, "working2_sieve_0.tif", self.parameter.dataset.profile)
+
         boundary_clean_list = pr.list_boundary_clean(sieve_list, num_boundary_clean)
+        utils.save_raster(boundary_clean_list[0], self.output_path, "working2_boundary_clean2_0.tif", self.parameter.dataset.profile)
 
         labeled_raster_list = pr.list_label_clusters(boundary_clean_list)
         zonal_stats = pr.list_zonal_stats(labeled_raster_list, self.parameter)
         vector_list = pr.list_vectorize_dict(labeled_raster_list, zonal_stats, self.parameter)
         vector_stack = utils.merge_polygons(vector_list)
 
-        utils.save_shapefile(vector_stack, self.output_path, "D2300_full_ZS3.shp")
+        # utils.save_shapefile(vector_stack, self.output_path, "D2300_full_ZS3.shp")
 
 # def get_file(path, param):
 #     """Get a file from the directory that matches the parameter."""
