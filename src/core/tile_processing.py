@@ -283,24 +283,31 @@ class TileParameterization:
         """
         # Apply median filter
         median_filter = param.median_filter()
-
+        utils.save_raster(median_filter, self.output_path, "prog_median_filter.tif", param.dataset.profile)
         # Apply threshold
         thresholded = param.threshold(median_filter)
-
+        utils.save_raster(thresholded[0], self.output_path, "prog_thresholded_0.tif", param.dataset.profile)
         # Apply majority filter
         majority_filtered = param.majority_filter(thresholded)
+        utils.save_raster(majority_filtered[0], self.output_path, "prog_majority_filtered_0.tif", param.dataset.profile)
 
         # Apply boundary clean filter
         boundary_cleaned = param.boundary_clean(majority_filtered)
+        utils.save_raster(boundary_cleaned[0], self.output_path, "prog_boundary_cleaned_0.tif", param.dataset.profile)
 
         # Second filters
         majority_filtered_3 = param.majority_filter(boundary_cleaned, size=3)
+        utils.save_raster(majority_filtered_3[0], self.output_path, "prog_majority_filtered_3_0.tif", param.dataset.profile)
+
         sieve_filtered = param.sieve_filter(majority_filtered_3)
-        
+        utils.save_raster(sieve_filtered[0], self.output_path, "prog_sieve_filtered_0.tif", param.dataset.profile)
+
         # boundary_cleaned2 = param.boundary_clean(sieve_filtered)
         # # utils.show_raster((boundary_cleaned2[0]), title=f"{param.name} - boundary_cleaned2")
 
         final_rater_list = param.mask_list(sieve_filtered)
+        utils.save_raster(final_rater_list[0], self.output_path, "prog_final_rater_list_0.tif", param.dataset.profile)
+
         # utils.show_raster((final_rater_list[0]), title=f"{param.name} - Final Processed Raster")
 
 
@@ -325,7 +332,7 @@ class TileParameterization:
         vector_list = pr.list_vectorize_dict(labeled_raster_list, zonal_stats, param)
         vector_stack = utils.merge_polygons(vector_list)
 
-        utils.save_shapefile(vector_stack, self.output_path, f"t1250_{self.name}_stack.shp")
+        # utils.save_shapefile(vector_stack, self.output_path, f"t1250_{self.name}_stack.shp")
 
     def process_indicator(self):
             """
