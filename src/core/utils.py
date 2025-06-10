@@ -2,6 +2,7 @@ import os
 import gc
 import rasterio as rio
 from rasterio import features
+from rasterio.io import MemoryFile
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -12,6 +13,8 @@ from osgeo import gdal
 import rasterio
 import tempfile
 from scipy import ndimage
+from exactextract import exact_extract
+from tqdm import tqdm
 
 #=====================================================#
 # Raster Operations
@@ -92,7 +95,7 @@ def list_sieve_filter(array, iterations=1, threshold=9, connectedness=4, crs=Non
 
     crs_wkt = crs.to_wkt()
 
-    for b in range(bands):
+    for b in tqdm(range(bands), desc="Applying Sieve Filter"):
         array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")
 
         # Initialize source in-memory dataset
@@ -124,71 +127,6 @@ def list_sieve_filter(array, iterations=1, threshold=9, connectedness=4, crs=Non
 
     return filtered_array
 
-# def list_sieve_filter(array, threshold=9, connectedness=4, profile=None, iterations=1):
-#     array = np.asarray(array)
-#     bands, height, width = array.shape
-#     filtered_array = np.empty_like(array, dtype="uint8")
-
-#     transform = profile.get_transform()
-#     crs = profile.get_crs()
-
-#     for b in range(bands):
-#         array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")
-
-#         with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp1, \
-#              tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp2:
-
-#             tmp_src_path, tmp_dst_path = tmp1.name, tmp2.name
-
-#             # Write band to file
-#             with rio.open(
-#                 tmp_src_path, "w",
-#                 driver="GTiff",
-#                 height=height,
-#                 width=width,
-#                 count=1,
-#                 dtype="uint8",
-#                 crs=crs,
-#                 transform=transform,
-#             ) as ds:
-#                 ds.write(array_uint8, 1)
-
-#             # Apply sieve filtering iteratively
-#             for i in range(iterations):
-#                 src_path = tmp_src_path if i % 2 == 0 else tmp_dst_path
-#                 dst_path = tmp_dst_path if i % 2 == 0 else tmp_src_path
-
-#                 src_ds = gdal.Open(src_path, gdal.GA_ReadOnly)
-#                 dst_ds = gdal.GetDriverByName("GTiff").Create(
-#                     dst_path,
-#                     width,
-#                     height,
-#                     1,
-#                     gdal.GDT_Byte
-#                 )
-
-#                 gdal.SieveFilter(
-#                     srcBand=src_ds.GetRasterBand(1),
-#                     maskBand=None,
-#                     dstBand=dst_ds.GetRasterBand(1),
-#                     threshold=threshold,
-#                     connectedness=connectedness
-#                 )
-
-#                 src_ds = None
-#                 dst_ds = None
-
-#             # Read final result
-#             final_ds = gdal.Open(dst_path, gdal.GA_ReadOnly)
-#             filtered_array[b] = final_ds.GetRasterBand(1).ReadAsArray()
-#             final_ds = None
-
-#             # # Clean up temp files
-#             # os.unlink(tmp_src_path)
-#             # os.unlink(tmp_dst_path)
-
-#     return filtered_array
-
 #=====================================================#
 # Vector Operations
 #=====================================================#
@@ -202,7 +140,7 @@ def vectorize(mask_array, value, transform, crs):
         for geom, val in shapes if val == 1
     ]
     gdf = gpd.GeoDataFrame(polygons, crs=crs)
-    # gdf = gdf.drop(columns="value")
+
     return gdf
 
 def vectorize_dict(labeled_array, stats_dict, transform, crs):
@@ -302,3 +240,56 @@ def zonal_stats(zone_raster, data_raster, value, pixel_area):
         }
         for mi, zone, mean, count in zip(minimum, unique_zones, means, counts)
     }
+
+def zonal_stats2(polygons, data_raster, pixel_area, crs, transform):
+    """
+    Calculate zonal statistics for a given data raster and polygon.
+    
+    Parameters:
+    - polygon (shapely.geometry.Polygon): Polygon geometry for the zone.
+    - data_raster (np.ndarray): 2D array of data values.
+    - value (float): The value of the raster as a whole (threshold/confidence level).
+    - pixel_area (float): Area represented by each pixel.
+    
+    Returns:
+    - dict: Zonal statistics for the polygon.
+    """
+    param_name = "D2300"
+    stats = gpd.GeoDataFrame()
+    base_raster = array_to_rasterio(data_raster, transform, crs)
+    for polygon in tqdm(polygons, desc="Calculating zonal stats"):
+        temp = exact_extract(
+            base_raster,
+            polygon,
+            [
+            f"{param_name}_mean=mean",
+            f"{param_name}area=count",
+            f"{param_name}_min=min",
+            f"{param_name}_p25=quantile(q=0.25)",
+            f"{param_name}_p75=quantile(q=0.75)",
+            f"{param_name}_sd=stdev"
+            ],
+            include_geom=True,
+            include_cols="value",
+            output='pandas'
+        )
+        stats = pd.concat([stats, temp], ignore_index=True)
+    
+    stats[f"{param_name}area"] = stats[f"{param_name}area"] * pixel_area * 1000000  # Convert to square meters
+ 
+    return stats
+
+def array_to_rasterio(array, transform, crs):
+    height, width = array.shape
+    memfile = MemoryFile()
+    with memfile.open(
+        driver='GTiff',
+        height=height,
+        width=width,
+        count=1,
+        dtype=array.dtype,
+        transform=transform,
+        crs=crs
+    ) as dataset:
+        dataset.write(array, 1)
+    return memfile.open()

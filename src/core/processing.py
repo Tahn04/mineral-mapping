@@ -8,6 +8,8 @@ from scipy.ndimage import generic_filter
 from tqdm import tqdm
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import geopandas as gpd
+import pandas as pd
 
 
 def get_thresholds(param):
@@ -132,12 +134,10 @@ def list_boundary_clean(raster_list, iterations=1, radius=1):
         for raster in tqdm(raster_list, desc="Boundary cleaning")
     ]
 
-def list_vectorize(raster_list, profile, param):
-    transform = profile.transform
-    crs = profile.crs
-
-    thresholds = get_thresholds(param)
-
+def list_vectorize(raster_list, thresholds, crs, transform):
+    """
+    Vectorizes a list of rasters using a list of thresholds.
+    """
     index = 0
     results = []
     for raster in tqdm(raster_list, desc="Vectorizing"):
@@ -246,6 +246,49 @@ def list_zonal_stats(labeled_raster_list, param, max_workers=4):
 #         index += 1
         
 #     return results
+
+def list_vectorize_stats(raster_list, stats_dict_list, profile, param):
+    """
+    Vectorizes a list of rasters using a list of stats dictionaries.
+    """
+    transform = profile.transform
+    crs = profile.crs
+
+    index = 0
+    results = []
+    for raster in tqdm(raster_list, desc="Vectorizing with stats"):
+        result = utils.vectorize_stats(raster, stats_dict_list[index], transform, crs)
+        results.append(result)
+        index += 1
+        
+    return results
+
+def list_zonal_stats2(polygons, param_list, crs, transform):
+    """
+    Calculate zonal statistics for a list of polygons and parameters.
+    
+    Parameters:
+    - polygons (list): List of polygon geometries.
+    - param_list (list): List of parameters for each polygon.
+    - crs: Coordinate reference system.
+    - transform: Affine transform for the raster.
+    
+    Returns:
+    - list: Zonal statistics for each polygon.
+    """
+    results = []
+
+    x_res = transform[0]
+    y_res = abs(transform[4])  # y res is negative for north-up images
+    pixel_area = x_res * y_res
+    # for polygon, param in tqdm(zip(polygons, param_list), total=len(polygons), desc="Calculating zonal stats"):
+    #     result = utils.zonal_stats2(polygon, param.raster, param.value, param.pixel_area, crs, transform)
+    #     results.append(result)
+    results = gpd.GeoDataFrame()
+    for param in param_list:
+        temp = utils.zonal_stats2(polygons, param.raster, pixel_area, crs, transform)
+        results = pd.concat([results, temp], ignore_index=True)
+    return results
 
 def list_label_clusters(raster_list, min_cluster_size=9):
     labeled_rasters = [

@@ -4,6 +4,7 @@ processes:
     path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters # Can be file or directory
     thresholds:
       median:
+        run: True
         size: 3
         iterations: 1
       parameters:
@@ -26,40 +27,42 @@ processes:
       iterations: 1
     
     vectorization:
+      stats: ["avg", "min", "max", "std"]
       driver: SHP
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
 
-  # Indicator:
-  #   name: FeMgSmectite
-  #   path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
-  #   thresholds:
-  #     median:
-  #       size: 3
-  #       iterations: 1
-  #     parameters:
-  #       D2300: [0.001, 0.005, 0.01]
-  #       BD1900_2: [0.01, 0.015, 0.02]
-  #     masks:
-  #       BD1500_2: [0.005]
-  #   pipeline:
-  #   - task: majority
-  #     iterations: 1
+  Indicator:
+    name: FeMgSmectite
+    path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
+    thresholds:
+      median:
+        run: True
+        size: 3
+        iterations: 1
+      parameters:
+        D2300: [0.001, 0.005, 0.01]
+        BD1900_2: [0.01, 0.015, 0.02]
+      masks:
+        BD1500_2: [0.005]
+    pipeline:
+    - task: majority
+      iterations: 1
 
-  #   - task: boundary
-  #     iterations: 1
+    - task: boundary
+      iterations: 1
 
-  #   - task: majority
-  #     iterations: 3
+    - task: majority
+      iterations: 3
 
-  #   - task: sieve
-  #     iterations: 1
+    - task: sieve
+      iterations: 1
 
-  #   - task: boundary
-  #     iterations: 1
+    - task: boundary
+      iterations: 1
     
-  #   vectorization:
-  #     driver: SHP
-  #     output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+    vectorization:
+      driver: SHP
+      output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
 
 # PROCESSING_FUNCTIONS = {
 #     "median": apply_median_filter,
