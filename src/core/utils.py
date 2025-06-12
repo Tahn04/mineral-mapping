@@ -241,12 +241,12 @@ def zonal_stats(zone_raster, data_raster, value, pixel_area):
         for mi, zone, mean, count in zip(minimum, unique_zones, means, counts)
     }
 
-def zonal_stats2(polygons, data_raster, pixel_area, crs, transform):
+def zonal_stats3(vector_layers, data_raster, pixel_area, crs, transform):
     """
     Calculate zonal statistics for a given data raster and polygon.
     
     Parameters:
-    - polygon (shapely.geometry.Polygon): Polygon geometry for the zone.
+    - vector_layers (list of gpd.GeoDataFrame): List of GeoDataFrames containing polygons for each layer.
     - data_raster (np.ndarray): 2D array of data values.
     - value (float): The value of the raster as a whole (threshold/confidence level).
     - pixel_area (float): Area represented by each pixel.
@@ -257,25 +257,89 @@ def zonal_stats2(polygons, data_raster, pixel_area, crs, transform):
     param_name = "D2300"
     stats = gpd.GeoDataFrame()
     base_raster = array_to_rasterio(data_raster, transform, crs)
-    for polygon in tqdm(polygons, desc="Calculating zonal stats"):
-        temp = exact_extract(
-            base_raster,
-            polygon,
-            [
+    for vector_layer in tqdm(vector_layers, desc="Calculating zonal stats"):
+        n_chunks = len(polygon)
+        polygon_chunks = np.array_split(polygon, n_chunks)
+        intersting_chuck = polygon_chunks[144] 
+        # show_polygons(intersting_chuck, title=f"Chunk")
+        stats_list = []
+        for i, poly_chunk in enumerate(polygon_chunks):
+            print(f"Processing chunk {i + 1}/{n_chunks}")
+            # show_polygons(poly_chunk, title=f"Chunk {i+1}")
+            if i != 144:
+                temp = exact_extract(
+                    base_raster,
+                    poly_chunk,
+                    [
+                        f"{param_name}_mean=mean",
+                        f"{param_name}area=count",
+                        f"{param_name}_min=min",
+                        f"{param_name}_p25=quantile(q=0.25)",
+                        f"{param_name}_p75=quantile(q=0.75)",
+                        f"{param_name}_sd=stdev"
+                    ],
+                    include_geom=True,
+                    include_cols="value",
+                    output='pandas',
+                    progress=True
+                )
+                stats_list.append(temp)
+            else:
+                show_polygons(poly_chunk, title=f"Chunk")
+                temp = exact_extract(
+                    base_raster,
+                    poly_chunk,
+                    [
+                        f"{param_name}_mean=mean",
+                        f"{param_name}area=count",
+                        f"{param_name}_min=min",
+                        f"{param_name}_p25=quantile(q=0.25)",
+                        f"{param_name}_p75=quantile(q=0.75)",
+                        f"{param_name}_sd=stdev"
+                    ],
+                    include_geom=True,
+                    strategy="raster-sequential",
+                    include_cols="value",
+                    output='pandas',
+                    progress=True
+                )
+                stats_list.append(temp)
+
+        stats = pd.concat(stats_list, ignore_index=True)
+    
+    stats[f"{param_name}area"] = stats[f"{param_name}area"] * pixel_area * 1000000  # Convert to square meters
+ 
+    return stats
+
+def zonal_stats2(vector_layers, data_raster, pixel_area, crs, transform):
+    param_name = "D2300"
+
+    stats = gpd.GeoDataFrame()
+    base_raster = array_to_rasterio(data_raster, transform, crs)
+
+    vector_stack = merge_polygons(vector_layers[1:])
+
+    temp = exact_extract(
+        base_raster,
+        vector_stack,
+        [
             f"{param_name}_mean=mean",
             f"{param_name}area=count",
             f"{param_name}_min=min",
             f"{param_name}_p25=quantile(q=0.25)",
             f"{param_name}_p75=quantile(q=0.75)",
             f"{param_name}_sd=stdev"
-            ],
-            include_geom=True,
-            include_cols="value",
-            output='pandas'
-        )
-        stats = pd.concat([stats, temp], ignore_index=True)
+        ],
+        include_geom=True,
+        include_cols="value",
+        strategy="raster-sequential",
+        output='pandas',
+        progress=True
+    )
+
+    stats = pd.concat([stats, temp], ignore_index=True)
     
-    stats[f"{param_name}area"] = stats[f"{param_name}area"] * pixel_area * 1000000  # Convert to square meters
+    stats[f"{param_name}area"] = stats[f"{param_name}area"] * pixel_area * 0.001  # Convert to square meters
  
     return stats
 

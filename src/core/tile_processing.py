@@ -6,6 +6,7 @@ import core.config as cfg
 import core.utils as utils
 import core.processing as pr
 import numpy as np
+from tqdm import tqdm
 
 class ProcessingPipeline:
     """
@@ -27,8 +28,7 @@ class ProcessingPipeline:
         """
         Process the parameter or indicator based on the name.
         """
-        # self.config.processes is a dict, so iterate over its items
-        for process_name, process in self.config.processes.items():
+        for process_name, process in tqdm(self.config.processes.items(), desc="Processing Processes"):
             print(f"Processing {process_name}: {process["name"]}")
             self.config.set_current_process(process_name)
 
@@ -62,7 +62,7 @@ class ProcessingPipeline:
         vector_stack = pr.list_zonal_stats2(polygons, param_list, self.crs, self.transform)
         output_dict = self.config.get_output_path()
         process_name = self.config.get_current_process()["name"]
-        utils.save_shapefile(vector_stack, output_dict, f"{process_name}_new_code3.shp")
+        utils.save_shapefile(vector_stack, output_dict, f"MC13_{process_name}_raster_sequential.shp")
 
     def init_parameters(self):
         """
@@ -102,6 +102,9 @@ class ProcessingPipeline:
         raster_list = self.threshold(param_list)
 
         show_rasters = False
+        if show_rasters:
+            utils.show_raster(raster_list[0], title="threshold- Processed Raster lowest")
+            utils.save_raster(raster_list[0], r"\\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters", "MC13_thresholded_0.tif", param_list[0].dataset.profile)
         # boolean filters 
         for task in self.config.get_pipeline():
             task_name = task.get("task", "")
@@ -173,9 +176,10 @@ class ProcessingPipeline:
                 median_iterations = self.config.get_median_config().get("iterations", 1) # test if defaulting 
                 median_size = self.config.get_median_config().get("size", 3)
                 median_filter = param.median_filter(iterations=median_iterations, size=median_size)
+                # utils.save_raster(median_filter, r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs", f"T1250_median_filter_D2300.tif", param.dataset.profile)
             else:
                 median_filter = param.raster
-                
+
             if param.mask:
                 masks_thresholded_list.append(param.threshold(median_filter, self.config.get_thresholds("masks", param.name)))
             else:
