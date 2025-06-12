@@ -1,20 +1,118 @@
 import yaml
 from pydantic import BaseModel
 import os
+import core.parameter as pm
+import re
 
 class Config:
     """
     Configuration handler for the mineral mapping application.
     Loads and provides access to settings from a YAML file.
     """
-    def __init__(self, yaml_file=None):
+    def __init__(self, yaml_file=None, processing=None):
         default_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../config/config.yaml"))
+        if yaml_file is None:
+            self.yaml = False
         self.yaml_file = yaml_file or default_path
         self._config = None
         self.load_config()
         self.curr_process = None
-        # self.crs = None
-        # self.transform = None
+        self.processing = processing or "default" 
+        self.yaml = True
+        self.params = None
+        
+    def config_array(self, param, crs, transform, mask=None):
+        """
+        Initialize the configuration with an array and its metadata.
+        
+        Args:
+            array: The raster data as a numpy array.
+            crs: Coordinate Reference System of the raster data.
+            transform: Affine transformation for the raster data.
+        """
+        for key, value in param.items():
+            if isinstance(value, list):
+                # If the value is a list, assume it's a list of arrays
+                self._config[key] = [pm.Parameter(name, array=v, crs=crs, transform=transform) for name, v in value]
+            else:
+                # Otherwise, assume it's a single array
+                self._config[key] = pm.Parameter(key, array=value, crs=crs, transform=transform)
+    
+    def init_parameters(self, raster=None, mask=None):
+        """
+        Initialize the parameters based on the process configuration.
+        
+        Args:
+            process: The process configuration dictionary.
+        
+        Returns:
+            List: A list of Parameter objects initialized with the raster data.
+        """
+        param_file_dicts = self.get_file_paths(self.get_param_names())
+        mask_file_dicts = self.get_file_paths(self.get_mask_names())
+
+        param_list = []
+        for name, file_path in param_file_dicts.items():
+            param = pm.Parameter(name, file_path)
+            param.mask = True
+            param_list.append(param)
+        
+        return param_list
+    # def init_parameters(self):
+    #     """
+    #     Initialize the parameters based on the process configuration.
+        
+    #     Args:
+    #         process: The process configuration dictionary.
+        
+    #     Returns:
+    #         List: A list of Parameter objects initialized with the raster data.
+    #     """
+    #     param_file_dicts = self.get_file_paths(self.get_param_names())
+    #     mask_file_dicts = self.get_file_paths(self.get_mask_names())
+
+    #     param_list = []
+    #     for idx, (param_name, file_path) in enumerate(param_file_dicts.items()):
+    #         param = pm.Parameter(param_name, file_path)
+    #         if idx == 0:
+    #             self.assign_spatial_info(param.dataset)
+    #             self.mask = param.coverage_mask()
+    #         param_list.append(param)
+        
+    #     for mask_name, file_path in mask_file_dicts.items():
+    #         mask_param = pm.Parameter(mask_name, file_path)
+    #         mask_param.mask = True
+    #         param_list.append(mask_param)
+        
+    #     return param_list
+
+    def get_file_paths(self, names):
+        """
+        Returns the file path of the parameter raster or paths for indicators.
+        """
+        files = os.listdir(self.get_dir_path())
+        files_dict = {}
+
+        for param in names:
+            file_path = self._find_file(files, param)
+            if file_path:
+                files_dict[param] = file_path
+            else:
+                print(f"File for parameter {param} not found in {self.get_dir_path()}")        
+
+        return files_dict
+
+    def _find_file(self, files, param):
+        """
+        Helper function to find the file for a given parameter in the directory.
+        """
+        pattern = re.compile(rf".*{param}.*\.IMG$")
+        for f in files:
+            match = pattern.match(f)
+            if match:
+                return os.path.join(self.get_dir_path(), f)
+        return None
+
 
     def load_config(self):
         """Load the configuration from the YAML file."""
@@ -22,7 +120,11 @@ class Config:
             with open(self.yaml_file, 'r') as file:
                 self._config = yaml.safe_load(file)
         # Set top-level keys as attributes for convenience
-        for key, value in self._config.items():
+        if self.yaml is None and self.processing:
+            configuration = self._config.get(self.processing, {})
+        else:
+            configuration = self._config
+        for key, value in configuration.items():
             setattr(self, key, value)
 
     def get(self, key, default=None):

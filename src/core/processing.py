@@ -14,92 +14,6 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import geopandas as gpd
 import pandas as pd
 
-
-def get_thresholds(param):
-    config_path = os.path.join("Code", "mineral-mapping", "config", "default.json")
-    with open(config_path, "r") as f:
-        config = json.load(f)
-
-    thresholds = config["PARAM_SETTINGS"][param]["thresholds"]  # Adjust key as needed
-    return thresholds
-
-def get_num_median_filter(param):
-    config_path = os.path.join("Code", "mineral-mapping", "config", "default.json")
-    with open(config_path, "r") as f:
-        config = json.load(f)
-
-    num_median_filter = config["PARAM_SETTINGS"][param]["num_median_filter"]  # Adjust key as needed
-    return num_median_filter
-
-class Defaults:
-    """
-    Class to hold default parameters for processing.
-    """
-    def __init__(self):
-        self.config_path = os.path.join("Code", "mineral-mapping", "config", "default.json")
-        self.config = self.load_config()
-        self.indic_params = None
-
-    def load_config(self):
-        with open(self.config_path, "r") as f:
-            return json.load(f)
-        
-    def get_thresholds(self, param):
-        if self.indic_params is not None:
-            if param in self.indic_params["Param"]:
-                return self.indic_params["Param"][param]
-            elif param in self.indic_params["Mask"]:
-                return self.indic_params["Mask"][param]
-        return self.config["PARAM_SETTINGS"][param]["thresholds"]
-    
-    def get_mask_threshold(self, param):
-        return self.indic_params["Mask"][param]
-    
-    def get_num_median_filter(self, param):
-        return self.config["PARAM_SETTINGS"][param]["num_median_filter"]
-    
-    def get_num_majority_filter(self, param):
-        return self.config["PARAM_SETTINGS"][param]["num_majority_filter"]
-    
-    def get_num_boundary_clean(self, param):
-        return self.config["PARAM_SETTINGS"][param]["num_boundary_clean"]
-    
-    def get_indicator_parameters(self, indicator): # Dict
-        return self.config["INDIC_SETTINGS"][indicator]["Param"]
-    
-    def get_indicator_mask(self, indicator): # Dict
-        return self.config["INDIC_SETTINGS"][indicator]["Mask"]
-
-    def indicator_check(self, name):
-        """
-        Search for the indicator.
-        """
-        for indic, details in self.config["INDIC_SETTINGS"].items():
-            if indic == name:
-                self.indic_params = details
-                return (details)
-        return None
-    
-    def get_indicator_param_names(self):
-        """
-        Get a list of parameter names from the current indicator parameters.
-        Returns the keys of the 'Param' dict if indic_params is set.
-        """
-        if self.indic_params is not None:
-            return list(self.indic_params["Param"].keys())
-        return None
-    
-    def get_indicator_mask_names(self):
-        """
-        Get a list of parameter names from the current indicator parameters.
-        Returns the keys of the 'Param' dict if indic_params is set.
-        """
-        if self.indic_params is not None:
-            return list(self.indic_params["Mask"].keys())
-        return None
-
-
-
 #===========================================#
 # Processing Functions
 #===========================================#
@@ -298,15 +212,4 @@ def list_label_clusters(raster_list, min_cluster_size=9):
         utils.label_clusters(raster)
         for raster in tqdm(raster_list, desc="Labeling clusters")
     ]
-    # cleaned_rasters = []
-    # for labeled_raster in labeled_rasters:
-    #     # Count pixels in each cluster
-    #     unique, counts = np.unique(labeled_raster, return_counts=True)
-    #     cluster_sizes = dict(zip(unique, counts))
-    #     # Create a mask for small clusters (excluding background 0)
-    #     mask = np.isin(labeled_raster, [label for label, size in cluster_sizes.items() if 0 != label and size < min_cluster_size])
-    #     # Set small clusters to zero
-    #     cleaned = labeled_raster.copy()
-    #     cleaned[mask] = 0
-    #     cleaned_rasters.append(cleaned)
     return labeled_rasters

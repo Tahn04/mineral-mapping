@@ -1,68 +1,106 @@
 processes:
-  parameterization: 
-    name: D2300
-    path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters # Can be file or directory
+  default:
+    name: 
     thresholds:
+      path: 
+      median:
+        size: 3
+        iterations: 1 # change to 0 to skip median filter
+      parameters:
+      masks:
+    pipeline:
+    - task: majority
+      iterations: 4
+
+    - task: sieve
+      iterations: 1
+    
+    vectorization:
+      stats: ["avg", "min", "max", "std"] # "avg", "min", "max", "std", "count", "p{n}"
+      driver: shp
+      output_dict: 
+  
+  parameterizatoin: 
+    name: MC13_D2300
+    thresholds:
+      # path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters
+      path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters # Can be file or directory
       median:
         run: True
         size: 3
         iterations: 1
       parameters:
-        D2300: [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275]
+        D2300: [0.005, 0.0125, 0.02, 0.0275] # [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275]
       masks:
     pipeline:
     - task: majority
-      iterations: 1
-
-    - task: boundary
-      iterations: 1
-
-    - task: majority
-      iterations: 3
+      iterations: 4
 
     - task: sieve
       iterations: 1
-
-    - task: boundary
-      iterations: 1
     
     vectorization:
-      stats: ["avg", "min", "max", "std"]
-      driver: SHP
+      stats: ["avg", "min", "max", "std"] # "avg", "min", "max", "std", "count", "p{n}"
+      driver: shp
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
 
-  Indicator:
-    name: FeMgSmectite
-    path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
-    thresholds:
-      median:
-        run: True
-        size: 3
-        iterations: 1
-      parameters:
-        D2300: [0.001, 0.005, 0.01]
-        BD1900_2: [0.01, 0.015, 0.02]
-      masks:
-        BD1500_2: [0.005]
-    pipeline:
-    - task: majority
-      iterations: 1
+  # Indicator:
+  #   name: FeMgSmectite
+  #   path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
+  #   thresholds:
+  #     median:
+  #       run: True
+  #       size: 3
+  #       iterations: 1
+  #     parameters:
+  #       D2300: [0.001, 0.005, 0.01]
+  #       BD1900_2: [0.01, 0.015, 0.02]
+  #     masks:
+  #       BD1500_2: [0.005]
+  #   pipeline:
+  #   - task: majority
+  #     iterations: 1
 
-    - task: boundary
-      iterations: 1
+  #   - task: boundary
+  #     iterations: 1
 
-    - task: majority
-      iterations: 3
+  #   - task: majority
+  #     iterations: 3
 
-    - task: sieve
-      iterations: 1
+  #   - task: sieve
+  #     iterations: 1
 
-    - task: boundary
-      iterations: 1
+  #   - task: boundary
+  #     iterations: 1
     
-    vectorization:
-      driver: SHP
-      output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+  #   vectorization:
+  #     driver: SHP
+  #     output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # PROCESSING_FUNCTIONS = {
 #     "median": apply_median_filter,
