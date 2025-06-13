@@ -9,7 +9,6 @@ class Parameter:
         self.name = name
         self.raster_path = raster_path
         self.raster = self.init_raster(raster_path, array, crs, transform)
-        self.defaults = pr.Defaults()
         self.mask = False
         self.crs = None
         self.transform = None
@@ -19,19 +18,17 @@ class Parameter:
         """Initialize the raster data from a file or an array."""
         if raster_path:
             dataset = utils.open_raster(raster_path)
-            self.raster = utils.open_raster_band(dataset, 1)
             self.crs = dataset.crs
             self.transform = dataset.transform
+            return utils.open_raster_band(dataset, 1)
         elif array is not None:
-            self.raster = np.array(array).filled(np.nan)
             if crs is None or transform is None:
                 raise ValueError("Both crs and transform must be provided when using an array.")
             self.crs = crs # if crs is not None else cfg.Config().get('default_crs')
             self.transform = transform # if transform is not None else cfg.Config().get('default_transform')
+            return array
         else:
             raise ValueError("Either raster_path or array with crs and transfrom must be provided.")
-        
-        self.mask = False
 
     def median_filter(self, size, iterations):
         """Apply a median filter to the raster data."""

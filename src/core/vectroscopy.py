@@ -21,7 +21,7 @@ class Vectroscopy:
         return cls(config)
     
     @classmethod
-    def from_array(cls, rast=None, mask=None, crs=None, transform=None, config_yaml: str = None):
+    def from_array(cls, rast=None, mask=None, crs=None, transform=None, stats=None, output=None, path=None, config_yaml: str = None):
         """
         Create an instance of Vectroscopy from an array.
         
@@ -40,7 +40,7 @@ class Vectroscopy:
         return cls(config)
     
     @classmethod
-    def from_file(cls, rast=None, mask=None, crs=None, transform=None, config_yaml: str = None):
+    def from_file(cls, rast=None, mask=None, crs=None, transform=None, stats=None, output=None, path=None, config_yaml: str = None):
         """
         Create an instance of Vectroscopy from a file.
         
@@ -57,7 +57,7 @@ class Vectroscopy:
         config = Config()
         return cls(config)
     
-    def vectorize(self, stats=None, output=None, path=None):
+    def vectorize(self):
         """
         Vectorizes data. 
 

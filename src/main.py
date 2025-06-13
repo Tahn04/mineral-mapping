@@ -24,8 +24,9 @@ def main():
     #     output_path,
     #     name="MonoSulfate"
     # ).process_indicator()
+    # config_path = r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\config\config.yaml"
 
-    vp.Vectroscopy.from_config().vectorize()
+    # vp.Vectroscopy.from_config(config_path).vectorize()
     
     path = r"\\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG"
 
@@ -44,9 +45,7 @@ def main():
         mask=None,  # You can specify a mask if needed
         crs=crs,
         transform=transform
-    ).vectorize(
-        output="pandas"
-    )
+    ).vectorize()
 
 
     # vectorize(

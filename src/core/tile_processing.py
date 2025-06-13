@@ -30,22 +30,24 @@ class ProcessingPipeline:
         """
         Process the parameter or indicator based on the name.
         """
-        for process_name, process in tqdm(self.config.processes.items(), desc="Processing Processes"):
-            print(f"Processing {process_name}: {process["name"]}")
+        # for process_name, process in tqdm(self.config.processes.items(), desc="Processing Processes"):
+        process = self.config.get_current_process()
+        process_name = self.config.get_current_process()["name"]
+        print(f"Processing {process_name}: {process["name"]}")
 
-            self.config.set_current_process(process_name)
-            
-            param_list = self.config.init_parameters()
+        # self.config.set_current_process(process_name)
+        
+        param_list = self.config.get_parameters_list()
 
-            processed_rasters = self.process_parameters(param_list)
-            # utils.show_raster(processed_rasters[1], title=f"{process_name} - Processed Raster 1")
-            # utils.show_raster(processed_rasters[-1], title=f"{process_name} - Processed Raster 10")
+        processed_rasters = self.process_parameters(param_list)
+        # utils.show_raster(processed_rasters[1], title=f"{process_name} - Processed Raster 1")
+        # utils.show_raster(processed_rasters[-1], title=f"{process_name} - Processed Raster 10")
 
-            self.vectorize(processed_rasters, param_list)
+        self.vectorize(processed_rasters, param_list)
 
-            # zonal_stats = self.calculate_stats(process, processed_rasters, param_list)
+        # zonal_stats = self.calculate_stats(process, processed_rasters, param_list)
 
-            # self.process_vector(process, processed_rasters, zonal_stats)
+        # self.process_vector(process, processed_rasters, zonal_stats)
     
     def vectorize(self, raster_list, param_list):
         """
@@ -147,18 +149,15 @@ class ProcessingPipeline:
                 raise TypeError(f"Expected Parameter object, got {type(param)}")
             
             # Apply median filter
-            if self.config.median_run_check():
-                median_iterations = self.config.get_median_config().get("iterations", 1) # test if defaulting 
-                median_size = self.config.get_median_config().get("size", 3)
-                median_filter = param.median_filter(iterations=median_iterations, size=median_size)
-                # utils.save_raster(median_filter, r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs", f"T1250_median_filter_D2300.tif", param.dataset.profile)
-            else:
-                median_filter = param.raster
+            median_iterations = self.config.get_median_config().get("iterations", 0) # test if defaulting 
+            median_size = self.config.get_median_config().get("size", 3)
+            preproccessing = param.median_filter(iterations=median_iterations, size=median_size)
+            # utils.save_raster(median_filter, r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs", f"T1250_median_filter_D2300.tif", param.dataset.profile)
 
             if param.mask:
-                masks_thresholded_list.append(param.threshold(median_filter, self.config.get_thresholds("masks", param.name)))
+                masks_thresholded_list.append(param.threshold(preproccessing, self.config.get_thresholds("masks", param.name)))
             else:
-                param_thresholded_list.append(param.threshold(median_filter, self.config.get_thresholds("parameters", param.name)))
+                param_thresholded_list.append(param.threshold(preproccessing, self.config.get_thresholds("parameters", param.name)))
             
         # Combine the thresholded rasters
         if len(masks_thresholded_list) > 0 or len(param_thresholded_list) > 1:

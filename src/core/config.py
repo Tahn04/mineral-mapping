@@ -15,11 +15,11 @@ class Config:
             self.yaml = False
         self.yaml_file = yaml_file or default_path
         self._config = None
-        self.load_config()
         self.curr_process = None
         self.processing = processing or "default" 
-        self.yaml = True
-        self.params = None
+        self.yaml = False
+        self.params = []
+        self.load_config()
         
     def config_array(self, param, crs, transform, mask=None):
         """
@@ -31,14 +31,47 @@ class Config:
             transform: Affine transformation for the raster data.
         """
         for key, value in param.items():
-            if isinstance(value, list):
+            if isinstance(value, tuple) and len(value) == 2:
                 # If the value is a list, assume it's a list of arrays
-                self._config[key] = [pm.Parameter(name, array=v, crs=crs, transform=transform) for name, v in value]
+                param = pm.Parameter(
+                    key, 
+                    array=value[0], 
+                    crs=crs, 
+                    transform=transform, 
+                    thresholds=value[1] if len(value) > 1 else None
+                )
+                self.params.append(param)
             else:
-                # Otherwise, assume it's a single array
-                self._config[key] = pm.Parameter(key, array=value, crs=crs, transform=transform)
+                raise ValueError("Provide thresholds")
+        if mask is not None:
+            for key, value in mask.items():
+                if isinstance(value, list):
+                    # If the value is a list, assume it's a list of arrays
+                    mask_param = pm.Parameter(
+                        key, 
+                        array=value[0], 
+                        crs=crs, 
+                        transform=transform, 
+                        thresholds=value[1] if len(value) > 1 else None
+                    )
+                    mask_param.mask = True
+                    self.params.append(mask_param)
+                else:
+                    raise ValueError("Provide thresholds for mask")            
     
-    def init_parameters(self, raster=None, mask=None):
+    def get_parameters_list(self):
+        """
+        Initialize the parameters based on the process configuration.
+        
+        Args:
+            process: The process configuration dictionary.
+        
+        Returns:
+            List: A list of Parameter objects initialized with the raster data.
+        """
+        return self.params
+    
+    def init_parameters(self):
         """
         Initialize the parameters based on the process configuration.
         
@@ -52,39 +85,19 @@ class Config:
         mask_file_dicts = self.get_file_paths(self.get_mask_names())
 
         param_list = []
-        for name, file_path in param_file_dicts.items():
-            param = pm.Parameter(name, file_path)
-            param.mask = True
+        for idx, (param_name, file_path) in enumerate(param_file_dicts.items()):
+            param = pm.Parameter(param_name, file_path)
+            if idx == 0:
+                self.assign_spatial_info(param.dataset)
+                self.mask = param.coverage_mask()
             param_list.append(param)
         
-        return param_list
-    # def init_parameters(self):
-    #     """
-    #     Initialize the parameters based on the process configuration.
+        for mask_name, file_path in mask_file_dicts.items():
+            mask_param = pm.Parameter(mask_name, file_path)
+            mask_param.mask = True
+            param_list.append(mask_param)
         
-    #     Args:
-    #         process: The process configuration dictionary.
-        
-    #     Returns:
-    #         List: A list of Parameter objects initialized with the raster data.
-    #     """
-    #     param_file_dicts = self.get_file_paths(self.get_param_names())
-    #     mask_file_dicts = self.get_file_paths(self.get_mask_names())
-
-    #     param_list = []
-    #     for idx, (param_name, file_path) in enumerate(param_file_dicts.items()):
-    #         param = pm.Parameter(param_name, file_path)
-    #         if idx == 0:
-    #             self.assign_spatial_info(param.dataset)
-    #             self.mask = param.coverage_mask()
-    #         param_list.append(param)
-        
-    #     for mask_name, file_path in mask_file_dicts.items():
-    #         mask_param = pm.Parameter(mask_name, file_path)
-    #         mask_param.mask = True
-    #         param_list.append(mask_param)
-        
-    #     return param_list
+        self.params = param_list
 
     def get_file_paths(self, names):
         """
@@ -120,7 +133,8 @@ class Config:
             with open(self.yaml_file, 'r') as file:
                 self._config = yaml.safe_load(file)
         # Set top-level keys as attributes for convenience
-        if self.yaml is None and self.processing:
+        if self.yaml is False and self.processing:
+            self.set_current_process(self.processing)
             configuration = self._config.get(self.processing, {})
         else:
             configuration = self._config
@@ -161,16 +175,9 @@ class Config:
         """Get the median configuration from the config."""
         if self.curr_process is None:
             raise ValueError("Current process is not set.")
-        if self.median_run_check():
-            return self.get_nested('processes', self.curr_process, 'thresholds', 'median', default={})
-        else:
-            return False
         
-    def median_run_check(self):
-        """Check if the median run is enabled for the current process."""
-        if self.curr_process is None:
-            raise ValueError("Current process is not set.")
-        return self.get_nested('processes', self.curr_process, 'thresholds', 'median', 'run', default=False)
+        return self.get_nested('processes', self.curr_process, 'thresholds', 'median', default={})
+
 
     def get_thresholds(self, param_type, param_name):
         """Get thresholds for the current process specified by the param_type (param/mask) and name."""
