@@ -8,11 +8,11 @@ class Parameter:
     def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, thresholds=None):
         self.name = name
         self.raster_path = raster_path
-        self.raster = self.init_raster(raster_path, array, crs, transform)
         self.mask = False
         self.crs = None
         self.transform = None
         self.thresholds = thresholds
+        self.raster = self.init_raster(raster_path, array, crs, transform)
 
     def init_raster(self, raster_path=None, array=None, crs=None, transform=None):
         """Initialize the raster data from a file or an array."""
@@ -30,9 +30,13 @@ class Parameter:
         else:
             raise ValueError("Either raster_path or array with crs and transfrom must be provided.")
 
-    def median_filter(self, size, iterations):
+    def new_median_filter(self, size=3, iterations=1):
         """Apply a median filter to the raster data."""
-        return pr.median_kernel_filter(self.raster, iterations=iterations, size=size)
+        return pr.dask_nanmedian_filter(self.raster, window_size=size, iterations=iterations)
+
+    def median_filter(self, size=3, iterations=1):
+        """Apply a median filter to the raster data and return a new raster."""
+        return pr.bottleneck_nanmedian_filter(self.raster, window_size=size, iterations=iterations)
 
     def threshold(self, raster=None, thresholds=None):
         """Apply thresholds to the raster data and return a list."""
@@ -53,6 +57,10 @@ class Parameter:
     def get_crs(self):
         """Return the coordinate reference system of the raster dataset."""
         return self.crs
+    
+    def get_thresholds(self):
+        """Return the thresholds for the parameter."""
+        return self.thresholds
     
     def set_thresholds(self, thresholds):
         """Set the thresholds for the parameter."""

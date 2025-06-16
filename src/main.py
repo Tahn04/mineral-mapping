@@ -24,13 +24,14 @@ def main():
     #     output_path,
     #     name="MonoSulfate"
     # ).process_indicator()
-    # config_path = r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\config\config.yaml"
+    config_path = r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\config\custom_config.yaml"
 
-    # vp.Vectroscopy.from_config(config_path).vectorize()
+    vp.Vectroscopy.from_config(config_path, process="Parameter").vectorize()
     
     path = r"\\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG"
+    mc_path = r"\\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG"
 
-    with rasterio.open(path) as src:
+    with rasterio.open(mc_path) as src:
         D2300 = src.read(1, masked=True).filled(np.nan)
         profile = src.profile  # get metadata
         transform = src.transform
@@ -38,14 +39,21 @@ def main():
 
     # tp.ProcessingPipeline().process_file()
 
-    vp.Vectroscopy.from_array(
-        rast={
-            "D2300": (D2300, [0.005, 0.0075, 0.01, 0.0125, 0.015])
-        },
-        mask=None,  # You can specify a mask if needed
-        crs=crs,
-        transform=transform
-    ).vectorize()
+    # vp.Vectroscopy.from_array(
+    #     rast={
+    #         "D2300": (D2300, [0.005, 0.0075, 0.01, 0.0125, 0.015])
+    #     },
+    #     mask=None,  # You can specify a mask if needed
+    #     crs=crs,
+    #     transform=transform
+    # ).vectorize()
+
+    # vp.Vectroscopy.from_files(
+    #     rast={
+    #         "D2300": (path, [0.005, 0.0075, 0.01, 0.0125, 0.015])
+    #     },
+    #     mask=None
+    # ).vectorize()
 
 
     # vectorize(

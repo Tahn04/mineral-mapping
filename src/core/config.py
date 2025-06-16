@@ -9,17 +9,26 @@ class Config:
     Configuration handler for the mineral mapping application.
     Loads and provides access to settings from a YAML file.
     """
-    def __init__(self, yaml_file=None, processing=None):
+    def __init__(self, yaml_file=None, process=None):
         default_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../config/config.yaml"))
+        self.yaml = True
         if yaml_file is None:
             self.yaml = False
         self.yaml_file = yaml_file or default_path
         self._config = None
         self.curr_process = None
-        self.processing = processing or "default" 
-        self.yaml = False
+        self.process = process or "default" 
         self.params = []
         self.load_config()
+
+    def get_parameters_list(self):
+        """
+        Initialize the parameters based on the process configuration.
+        
+        Returns:
+            List: A list of Parameter objects initialized with the raster data.
+        """
+        return self.params
         
     def config_array(self, param, crs, transform, mask=None):
         """
@@ -57,9 +66,39 @@ class Config:
                     mask_param.mask = True
                     self.params.append(mask_param)
                 else:
-                    raise ValueError("Provide thresholds for mask")            
-    
-    def get_parameters_list(self):
+                    raise ValueError("Provide thresholds for mask")
+
+    def config_files(self, rast, mask=None):
+        """
+        Initialize the configuration with file paths for parameters and masks.
+        
+        Args:
+            param: Dictionary of parameter names and their file paths.
+            mask: Dictionary of mask names and their file paths.
+        """
+
+        # for key, value in rast.items():
+        #     if isinstance(value, tuple) and len(value) == 2:
+        #         # If the value is a tuple, assume it's a file path and thresholds
+        #         param_file_dicts[key] = (value[0], value[1])
+
+        self.init_parameters(rast, mask)
+
+    def config_yaml(self):
+        """
+        Initialize the configuration from a YAML file.
+        
+        Args:
+            yaml_file (str): Path to the YAML configuration file.
+            process (str): Name of the process to set as current.
+        """
+        
+        param_file_dicts = self.get_nested('processes', self.process, 'thresholds', 'parameters', default={})
+        mask_file_dicts = self.get_nested('processes', self.process, 'thresholds', 'masks', default={})
+        
+        self.init_parameters(param_file_dicts, mask_file_dicts)
+
+    def init_parameters(self, param_file_dicts, mask_file_dicts):
         """
         Initialize the parameters based on the process configuration.
         
@@ -69,33 +108,19 @@ class Config:
         Returns:
             List: A list of Parameter objects initialized with the raster data.
         """
-        return self.params
-    
-    def init_parameters(self):
-        """
-        Initialize the parameters based on the process configuration.
-        
-        Args:
-            process: The process configuration dictionary.
-        
-        Returns:
-            List: A list of Parameter objects initialized with the raster data.
-        """
-        param_file_dicts = self.get_file_paths(self.get_param_names())
-        mask_file_dicts = self.get_file_paths(self.get_mask_names())
+        # param_file_dicts = self.get_file_paths(self.get_param_names())
+        # mask_file_dicts = self.get_file_paths(self.get_mask_names())
 
         param_list = []
-        for idx, (param_name, file_path) in enumerate(param_file_dicts.items()):
-            param = pm.Parameter(param_name, file_path)
-            if idx == 0:
-                self.assign_spatial_info(param.dataset)
-                self.mask = param.coverage_mask()
+        for param_name, parameters in param_file_dicts.items():
+            param = pm.Parameter(name=param_name, raster_path=parameters[0], thresholds=parameters[1] if len(parameters) > 1 else None)
             param_list.append(param)
         
-        for mask_name, file_path in mask_file_dicts.items():
-            mask_param = pm.Parameter(mask_name, file_path)
-            mask_param.mask = True
-            param_list.append(mask_param)
+        if mask_file_dicts is not None:
+            for mask_name, parameters in mask_file_dicts.items():
+                mask_param = pm.Parameter(mask_name, raster_path=parameters[0], thresholds=parameters[1] if len(parameters) > 1 else None)
+                mask_param.mask = True
+                param_list.append(mask_param)
         
         self.params = param_list
 
@@ -133,13 +158,13 @@ class Config:
             with open(self.yaml_file, 'r') as file:
                 self._config = yaml.safe_load(file)
         # Set top-level keys as attributes for convenience
-        if self.yaml is False and self.processing:
-            self.set_current_process(self.processing)
-            configuration = self._config.get(self.processing, {})
-        else:
-            configuration = self._config
-        for key, value in configuration.items():
-            setattr(self, key, value)
+        if self.process:
+            self.set_current_process(self.process)
+        #     configuration = self._config.get(self.process, {})
+        # else:
+        #     configuration = self._config
+        # for key, value in configuration.items():
+        #     setattr(self, key, value)
 
     def get(self, key, default=None):
         """Get a top-level config value by key."""
@@ -177,13 +202,6 @@ class Config:
             raise ValueError("Current process is not set.")
         
         return self.get_nested('processes', self.curr_process, 'thresholds', 'median', default={})
-
-
-    def get_thresholds(self, param_type, param_name):
-        """Get thresholds for the current process specified by the param_type (param/mask) and name."""
-        if self.curr_process is None:
-            raise ValueError("Current process is not set.")
-        return self.get_nested('processes', self.curr_process, 'thresholds', param_type, param_name)
 
     def get_masks(self):
         """Get mask names for the current process."""
@@ -232,6 +250,11 @@ class Config:
         """Get the output path for the current process."""
         process = self.get_current_process()
         return process['vectorization'].get('output_dict', '')
+    
+    def get_driver(self):
+        """Get the driver for the current process."""
+        process = self.get_current_process()
+        return process['vectorization'].get('driver', 'pandas')
 
     # Setters
     def set_current_process(self, process_name):

@@ -32,22 +32,21 @@ class ProcessingPipeline:
         """
         # for process_name, process in tqdm(self.config.processes.items(), desc="Processing Processes"):
         process = self.config.get_current_process()
-        process_name = self.config.get_current_process()["name"]
-        print(f"Processing {process_name}: {process["name"]}")
+        print()
+        for _ in tqdm(range(1), desc=f"Processing: {process["name"]}"):
+            # self.config.set_current_process(process_name)
+            
+            param_list = self.config.get_parameters_list()
 
-        # self.config.set_current_process(process_name)
-        
-        param_list = self.config.get_parameters_list()
+            processed_rasters = self.process_parameters(param_list)
+            # utils.show_raster(processed_rasters[1], title=f"{process_name} - Processed Raster 1")
+            # utils.show_raster(processed_rasters[-1], title=f"{process_name} - Processed Raster 10")
 
-        processed_rasters = self.process_parameters(param_list)
-        # utils.show_raster(processed_rasters[1], title=f"{process_name} - Processed Raster 1")
-        # utils.show_raster(processed_rasters[-1], title=f"{process_name} - Processed Raster 10")
+            self.vectorize(processed_rasters, param_list)
 
-        self.vectorize(processed_rasters, param_list)
+            # zonal_stats = self.calculate_stats(process, processed_rasters, param_list)
 
-        # zonal_stats = self.calculate_stats(process, processed_rasters, param_list)
-
-        # self.process_vector(process, processed_rasters, zonal_stats)
+            # self.process_vector(process, processed_rasters, zonal_stats)
     
     def vectorize(self, raster_list, param_list):
         """
@@ -61,13 +60,17 @@ class ProcessingPipeline:
         Returns:
             List: A list of vectorized geometries.
         """
+        driver = self.config.get_driver()
         thresholds = self.assign_thresholds(raster_list, param_list)
         polygons = pr.list_vectorize(raster_list, thresholds, self.crs, self.transform)
 
         vector_stack = pr.list_zonal_stats2(polygons, param_list, self.crs, self.transform)
+        if driver == "pandas":
+            return vector_stack
+
         output_dict = self.config.get_output_path()
         process_name = self.config.get_current_process()["name"]
-        utils.save_shapefile(vector_stack, output_dict, f"MC13_{process_name}_raster_sequential.shp")
+        utils.save_shapefile(vector_stack, output_dict, f"{process_name}_final", driver=driver)
     
     def process_parameters(self, param_list):
         """
@@ -78,10 +81,14 @@ class ProcessingPipeline:
         """
         raster_list = self.threshold(param_list)
 
+        target_param = param_list[0]
+        self.crs = target_param.get_crs()
+        self.transform = target_param.get_transform()
+
         show_rasters = False
         if show_rasters:
             utils.show_raster(raster_list[0], title="threshold- Processed Raster lowest")
-            utils.save_raster(raster_list[0], r"\\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters", "MC13_thresholded_0.tif", param_list[0].dataset.profile)
+            # utils.save_raster(raster_list[0], r"\\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters", "MC13_thresholded_0.tif", param_list[0].dataset.profile)
         # boolean filters 
         for task in self.config.get_pipeline():
             task_name = task.get("task", "")
@@ -125,10 +132,11 @@ class ProcessingPipeline:
                 if show_rasters:
                     utils.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
 
+        mask = target_param.coverage_mask()
         for i in range(len(raster_list)):
-            raster_list[i] = raster_list[i] * self.mask
+            raster_list[i] = raster_list[i] * mask
         raster_list = list(raster_list)
-        raster_list.insert(0, self.mask.astype(np.uint8))
+        raster_list.insert(0, mask.astype(np.uint8))
         return raster_list
 
     def threshold(self, param_list):
@@ -149,15 +157,20 @@ class ProcessingPipeline:
                 raise TypeError(f"Expected Parameter object, got {type(param)}")
             
             # Apply median filter
-            median_iterations = self.config.get_median_config().get("iterations", 0) # test if defaulting 
+            median_iterations = self.config.get_median_config().get("iterations", 0)
             median_size = self.config.get_median_config().get("size", 3)
-            preproccessing = param.median_filter(iterations=median_iterations, size=median_size)
+
+            # preproccessing = param.median_filter(iterations=median_iterations, size=median_size)
+            # utils.show_raster(preproccessing, title="median_filter")
+
+            preproccessing = param.new_median_filter(iterations=median_iterations, size=median_size)
+            # utils.show_raster(test_median, title="new_median_filter")
             # utils.save_raster(median_filter, r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs", f"T1250_median_filter_D2300.tif", param.dataset.profile)
 
             if param.mask:
-                masks_thresholded_list.append(param.threshold(preproccessing, self.config.get_thresholds("masks", param.name)))
+                masks_thresholded_list.append(param.threshold(preproccessing, param.get_thresholds()))
             else:
-                param_thresholded_list.append(param.threshold(preproccessing, self.config.get_thresholds("parameters", param.name)))
+                param_thresholded_list.append(param.threshold(preproccessing, param.get_thresholds()))
             
         # Combine the thresholded rasters
         if len(masks_thresholded_list) > 0 or len(param_thresholded_list) > 1:
@@ -198,7 +211,7 @@ class ProcessingPipeline:
             size = len(raster_list)
             thresholds = [i for i in range(size)]
         else:
-            thresholds = self.config.get_thresholds("parameters", param_list[0].name) # only one parameter in this case
+            thresholds = param_list[0].get_thresholds() # only one parameter in this case
             thresholds.insert(0, 0)  # Insert a zero threshold for the mask
         
         return thresholds

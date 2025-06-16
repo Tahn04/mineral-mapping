@@ -4,20 +4,21 @@ from .config import Config
 class Vectroscopy:
     def __init__(self, config):
         self.config = config
-        self.pipeline = ProcessingPipeline(self.config)
 
     @classmethod
-    def from_config(cls, config_yaml=None):
+    def from_config(cls, config_yaml=None, process=None):
         """
         Create an instance of Vectroscopy from a configuration file.
         
         Args:
             config_yaml (str): Path to the configuration YAML file.
+            process (str): The name of the process to run. Leave as None to run all.
         
         Returns:
             Vectroscopy: An instance of the Vectroscopy class.
         """
-        config = Config(config_yaml)
+        config = Config(config_yaml, process=process)
+        config.config_yaml()
         return cls(config)
     
     @classmethod
@@ -35,12 +36,12 @@ class Vectroscopy:
         Returns:
             Vectroscopy: An instance of the Vectroscopy class.
         """
-        config = Config(processing="default") # could be where you have multiple processing profiles. 
+        config = Config(process="default") # could be where you have multiple processing profiles. 
         config.config_array(param=rast, mask=mask, crs=crs, transform=transform)
         return cls(config)
     
     @classmethod
-    def from_file(cls, rast=None, mask=None, crs=None, transform=None, stats=None, output=None, path=None, config_yaml: str = None):
+    def from_files(cls, rast=None, mask=None, stats=None, output=None, path=None, config_yaml: str = None):
         """
         Create an instance of Vectroscopy from a file.
         
@@ -54,7 +55,8 @@ class Vectroscopy:
         Returns:
             Vectroscopy: An instance of the Vectroscopy class.
         """
-        config = Config()
+        config = Config(processing="default")
+        config.config_files(rast=rast, mask=mask)
         return cls(config)
     
     def vectorize(self):

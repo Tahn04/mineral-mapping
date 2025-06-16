@@ -13,6 +13,8 @@ from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import geopandas as gpd
 import pandas as pd
+from numpy.lib.stride_tricks import sliding_window_view
+import dask.array as da
 
 #===========================================#
 # Processing Functions
@@ -30,6 +32,42 @@ def full_threshold(raster, thresholds):
         
     return results
 
+def nanmedian_2d(x, window_size):
+    """Apply 2D nanmedian filter to a NumPy array with given window size."""
+    pad = window_size // 2
+    padded = np.pad(x, pad, mode='constant', constant_values=np.nan)
+
+    # Create sliding windows
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (window_size, window_size))
+    windows = windows.reshape(windows.shape[0], windows.shape[1], -1)
+
+    return bn.nanmedian(windows, axis=2)
+
+def dask_nanmedian_filter(arr, window_size=3, iterations=1):
+    dask_arr = da.from_array(arr, chunks=(1024, 1024))  # Adjust chunk size as needed
+
+    for _ in tqdm(range(iterations), desc="Applying Dask nanmedian filter"):
+        dask_arr = dask_arr.map_overlap(
+            nanmedian_2d,
+            window_size=window_size,
+            depth=window_size // 2,
+            boundary=np.nan,
+            dtype=arr.dtype
+        )
+
+    return dask_arr.compute()
+
+def bottleneck_nanmedian_filter(arr, window_size=3, iterations=1):
+    result = arr.copy()
+    for _ in tqdm(range(iterations), desc="Applying bottleneck nanmedian filter"):
+        pad = window_size // 2
+        padded = np.pad(result, pad, mode='constant', constant_values=np.nan)
+        windows = sliding_window_view(padded, (window_size, window_size))
+
+        flat_windows = windows.reshape(windows.shape[0], windows.shape[1], -1)
+        result = bn.nanmedian(flat_windows, axis=2)
+    return result
+
 def median_kernel_filter(raster, iterations=1, size=3):
     def bn_nanmedian(arr):
         return bn.nanmedian(arr)
@@ -39,7 +77,7 @@ def median_kernel_filter(raster, iterations=1, size=3):
 
 def list_majority_filter(raster_list, iterations=1, size=3):
     return [
-        utils.majority_filter(raster, size=size, iterations=iterations)
+        utils.majority_filter_fast(raster, size=size, iterations=iterations)
         #for raster in raster_list
         for raster in tqdm(raster_list, desc="Applying majority filter")
     ]

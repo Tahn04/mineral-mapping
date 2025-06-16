@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from scipy.signal import convolve2d
+from scipy.ndimage import convolve
 from shapely.geometry import shape
 from skimage.morphology import dilation, erosion, square
 from osgeo import gdal
@@ -15,6 +16,7 @@ import tempfile
 from scipy import ndimage
 from exactextract import exact_extract
 from tqdm import tqdm
+import dask.array as da
 
 #=====================================================#
 # Raster Operations
@@ -72,6 +74,26 @@ def majority_filter(binary_array, size=3, iterations=1):
 
     return binary_array
 
+def majority_filter_fast(binary_array, size=3, iterations=1):
+    kernel = np.ones((size, size), dtype=np.uint8)
+    array = np.nan_to_num(binary_array, nan=0).astype(np.uint8)
+    threshold = (size * size) // 2
+
+    for _ in range(iterations):
+        count = convolve(array, kernel, mode='mirror')
+        array = (count > threshold).astype(np.uint8)
+
+    return array
+
+def dask_majority_filter(arr, size=3, iterations=1):
+    def majority_func(block):
+        return majority_filter_fast(block, size=size, iterations=iterations)
+    
+    dask_arr = da.from_array(arr, chunks=(1024, 1024))
+    depth = size // 2
+
+    return dask_arr.map_overlap(majority_func, depth=depth, boundary=0).compute()
+
 def boundary_clean(raster_array, classes=None, iterations=2, radius=3):
 
     if classes is None:
@@ -88,12 +110,13 @@ def boundary_clean(raster_array, classes=None, iterations=2, radius=3):
 
     return result
 
-def list_sieve_filter(array, iterations=1, threshold=9, connectedness=4, crs=None, transform=None):
+def list_sieve_filter(array, crs, transform, iterations=1, threshold=9, connectedness=4):
     array = np.asarray(array)
     bands, height, width = array.shape
     filtered_array = np.empty_like(array, dtype="uint8")
 
     crs_wkt = crs.to_wkt()
+    # crs_wkt = crs
 
     for b in tqdm(range(bands), desc="Applying Sieve Filter"):
         array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")
@@ -174,10 +197,10 @@ def show_polygons(gdf, title=None):
     plt.axis('off')
     plt.show()
 
-def save_shapefile(gdf, output_path, file_name):
+def save_shapefile(gdf, output_path, file_name, driver='ESRI Shapefile'):
     if not os.path.exists(output_path):
         os.makedirs(output_path)
-    gdf.to_file(os.path.join(output_path, file_name), driver='ESRI Shapefile')
+    gdf.to_file(os.path.join(output_path, file_name), driver=driver)
 
 #=====================================================#
 # Attribute Table Operations
@@ -317,7 +340,7 @@ def zonal_stats2(vector_layers, data_raster, pixel_area, crs, transform):
     stats = gpd.GeoDataFrame()
     base_raster = array_to_rasterio(data_raster, transform, crs)
 
-    vector_stack = merge_polygons(vector_layers[1:])
+    vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
 
     temp = exact_extract(
         base_raster,
@@ -326,8 +349,8 @@ def zonal_stats2(vector_layers, data_raster, pixel_area, crs, transform):
             f"{param_name}_mean=mean",
             f"{param_name}area=count",
             f"{param_name}_min=min",
-            f"{param_name}_p25=quantile(q=0.25)",
-            f"{param_name}_p75=quantile(q=0.75)",
+            f"{param_name}_p=quantile(q=0.25)",
+            f"{param_name}_p=quantile(q=0.75)",
             f"{param_name}_sd=stdev"
         ],
         include_geom=True,
