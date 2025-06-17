@@ -30,7 +30,7 @@ processes:
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
   
   Parameter:
-    name: MC13_D2300_with_color
+    name: T1250_D2300_with_color
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
     thresholds:
       median:
@@ -39,8 +39,8 @@ processes:
         iterations: 1
       parameters:
         D2300:
-        # - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
+        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG
+        # - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
         # - \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
         - [0.005, 0.0125, 0.02, 0.0275]
       masks:

@@ -3,8 +3,8 @@ import re
 import json
 
 import core.config as cfg
-import core.utils as utils
-import core.processing as pr
+import core.raster_ops as ro
+import core.vector_ops as vo
 import core.parameter as pm
 import numpy as np
 from tqdm import tqdm
@@ -64,9 +64,9 @@ class ProcessingPipeline:
         """
         driver = self.config.get_driver()
         thresholds = self.assign_thresholds(raster_list, param_list)
-        polygons = pr.list_vectorize(raster_list, thresholds, self.crs, self.transform)
+        polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform)
 
-        vector_stack = pr.list_zonal_stats2(polygons, param_list, self.crs, self.transform)
+        vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform)
 
         vector_stack = self.assign_color(vector_stack)
         if driver == "pandas":
@@ -79,7 +79,7 @@ class ProcessingPipeline:
         #     "no_defs": True
         # }
         crs_wkt = self.crs.to_wkt() 
-        test_gcs = crs_wkt[0]
+        # test_gcs = crs_wkt.split("GEOGCS[")[1].split("]")[0]
 
         mars_gcs = "GEOGCS[\"GCS_Mars_2000\",DATUM[\"D_Mars_2000\",SPHEROID[\"Mars_2000_IAU_IAG\",3396190,169.894447223612]],PRIMEM[\"Reference_Meridian\",0],UNIT[\"Degree\",0.0174532925199433]]"
 
@@ -88,7 +88,7 @@ class ProcessingPipeline:
 
         output_dict = self.config.get_output_path()
         process_name = self.config.get_current_process()["name"]
-        utils.save_shapefile(gdf_gcs, output_dict, f"{process_name}_final.geojson", driver=driver)
+        vo.save_shapefile(gdf_gcs, output_dict, f"{process_name}_final.geojson", driver=driver)
 
     def process_parameters(self, param_list):
         """
@@ -105,7 +105,7 @@ class ProcessingPipeline:
 
         show_rasters = False
         if show_rasters:
-            utils.show_raster(raster_list[0], title="threshold- Processed Raster lowest")
+            ro.show_raster(raster_list[0], title="threshold- Processed Raster lowest")
             # utils.save_raster(raster_list[0], r"\\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters", "MC13_thresholded_0.tif", param_list[0].dataset.profile)
         # boolean filters 
         for task in self.config.get_pipeline():
@@ -116,9 +116,9 @@ class ProcessingPipeline:
 
                 iterations = 1 if iterations is None else iterations
                 size = 3 if size is None else size
-                raster_list = pr.list_majority_filter(raster_list, iterations=iterations, size=size)
+                raster_list = ro.list_majority_filter(raster_list, iterations=iterations, size=size)
                 if show_rasters:
-                    utils.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
+                    ro.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
 
             elif "boundary" in task_name:
                 iterations = self.config.get_task_param(task, "iterations")
@@ -126,9 +126,9 @@ class ProcessingPipeline:
 
                 iterations = 1 if iterations is None else iterations
                 radius = 1 if radius is None else radius
-                raster_list = pr.list_boundary_clean(raster_list, iterations=iterations, radius=radius)
+                raster_list = ro.list_boundary_clean(raster_list, iterations=iterations, radius=radius)
                 if show_rasters:
-                    utils.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
+                    ro.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
 
             elif "sieve" in task_name:
                 threshold = self.config.get_task_param(task, "threshold")
@@ -139,7 +139,7 @@ class ProcessingPipeline:
                 iterations = 1 if iterations is None else iterations
                 connectedness = 4 if connectedness is None else connectedness
 
-                raster_list = utils.list_sieve_filter(
+                raster_list = ro.list_sieve_filter(
                     raster_list,
                     iterations=iterations,
                     threshold=threshold,
@@ -148,7 +148,7 @@ class ProcessingPipeline:
                     connectedness=connectedness
                 )
                 if show_rasters:
-                    utils.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
+                    ro.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
 
         mask = target_param.coverage_mask()
         for i in range(len(raster_list)):
@@ -181,7 +181,7 @@ class ProcessingPipeline:
             # preproccessing = param.median_filter(iterations=median_iterations, size=median_size)
             # utils.show_raster(preproccessing, title="median_filter")
 
-            preproccessing = param.new_median_filter(iterations=median_iterations, size=median_size)
+            preproccessing = param.median_filter(iterations=median_iterations, size=median_size)
             # utils.show_raster(test_median, title="new_median_filter")
             # utils.save_raster(median_filter, r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs", f"T1250_median_filter_D2300.tif", param.dataset.profile)
 
@@ -253,20 +253,6 @@ class ProcessingPipeline:
         gdf['hex_color'] = gdf['value'].map(color_map)
         return gdf
     
-    def get_task_param(self, task, parameter):
-        """
-        Get the parameters for a specific task from the process configuration.
-        
-        Args:
-            task: The task configuration dictionary.
-        
-        Returns:
-            Dict: A dictionary of parameters for the task.
-        """
-        if parameter in task:
-            return task[parameter]
-        return None
-    
     def assign_spatial_info(self, dataset):
         """
         Assigns the spatial information from the dataset to the class attributes.
@@ -277,89 +263,3 @@ class ProcessingPipeline:
         self.crs = dataset.crs
         self.transform = dataset.transform
         print(f"Assigned CRS: {self.crs}, Transform: {self.transform}")
-    
-    def calculate_stats(self, process, raster_list, param_list):
-        """
-        Calculate statistics for the raster data based on the configuration.
-        """
-        labeled_raster_list = pr.list_label_clusters(raster_list)
-
-        zonal_stats = {}
-        for param in param_list:
-            if not isinstance(param, pm.Parameter):
-                raise TypeError(f"Expected Parameter object, got {type(param)}")
-            # if param.mask:
-            #     continue
-            zonal_stats[param.name] = pr.list_zonal_stats(labeled_raster_list, param)
-
-        if pr.check_stats_dict(zonal_stats):
-            # Restructure the zonal stats dictionary
-            zonal_stats = pr.restructure_stats(zonal_stats)
-
-        return zonal_stats
-
-    def process_vector(self, process, raster_list, zonal_stats):
-        """
-        Process the  vector data based on the configuration.
-        """
-        labeled_raster_list = pr.list_label_clusters(raster_list)
-
-        vector_list = pr.list_vectorize_dict(labeled_raster_list, zonal_stats, crs=self.crs, transform=self.transform)
-        vector_stack = utils.merge_polygons(vector_list)
-
-        utils.save_shapefile(vector_stack, process["vectorization"]["output_dict"], f"{process["name"]}_new_code2.shp")
-
-    # def init_parameters(self):
-    #     """
-    #     Initialize the parameters based on the process configuration.
-        
-    #     Args:
-    #         process: The process configuration dictionary.
-        
-    #     Returns:
-    #         List: A list of Parameter objects initialized with the raster data.
-    #     """
-    #     param_file_dicts = self.get_file_paths(self.config.get_param_names())
-    #     mask_file_dicts = self.get_file_paths(self.config.get_mask_names())
-
-    #     param_list = []
-    #     for idx, (param_name, file_path) in enumerate(param_file_dicts.items()):
-    #         param = pm.Parameter(param_name, file_path)
-    #         if idx == 0:
-    #             self.assign_spatial_info(param.dataset)
-    #             self.mask = param.coverage_mask()
-    #         param_list.append(param)
-        
-    #     for mask_name, file_path in mask_file_dicts.items():
-    #         mask_param = pm.Parameter(mask_name, file_path)
-    #         mask_param.mask = True
-    #         param_list.append(mask_param)
-        
-    #     return param_list
-
-    # def get_file_paths(self, names):
-    #     """
-    #     Returns the file path of the parameter raster or paths for indicators.
-    #     """
-    #     files = os.listdir(self.config.get_dir_path())
-    #     files_dict = {}
-
-    #     for param in names:
-    #         file_path = self._find_file(files, param)
-    #         if file_path:
-    #             files_dict[param] = file_path
-    #         else:
-    #             print(f"File for parameter {param} not found in {self.dir_path}")        
-
-    #     return files_dict
-
-    # def _find_file(self, files, param):
-    #     """
-    #     Helper function to find the file for a given parameter in the directory.
-    #     """
-    #     pattern = re.compile(rf".*{param}.*\.IMG$")
-    #     for f in files:
-    #         match = pattern.match(f)
-    #         if match:
-    #             return os.path.join(self.config.get_dir_path(), f)
-    #     return None
