@@ -236,14 +236,25 @@ def list_zonal_stats2(polygons, param_list, crs, transform):
     x_res = transform[0]
     y_res = abs(transform[4])  # y res is negative for north-up images
     pixel_area = x_res * y_res
-    # for polygon, param in tqdm(zip(polygons, param_list), total=len(polygons), desc="Calculating zonal stats"):
-    #     result = utils.zonal_stats2(polygon, param.raster, param.value, param.pixel_area, crs, transform)
-    #     results.append(result)
+
     results = gpd.GeoDataFrame()
     for param in param_list:
         temp = utils.zonal_stats2(polygons, param.raster, pixel_area, crs, transform)
         results = pd.concat([results, temp], ignore_index=True)
     return results
+
+# def list_simplify_polygons(polygons, tolerance=0.001):
+#     """
+#     Simplify a list of polygons using a specified tolerance.
+    
+#     Parameters:
+#     - polygons (list): List of polygon geometries.
+#     - tolerance (float): Tolerance for simplification.
+    
+#     Returns:
+#     - list: List of simplified polygons.
+#     """
+#     return [poly.simplify(tolerance) for poly in tqdm(polygons, desc="Simplifying polygons")]
 
 def list_label_clusters(raster_list, min_cluster_size=9):
     labeled_rasters = [

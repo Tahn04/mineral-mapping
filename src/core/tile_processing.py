@@ -8,6 +8,8 @@ import core.processing as pr
 import core.parameter as pm
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 class ProcessingPipeline:
     """
@@ -65,13 +67,29 @@ class ProcessingPipeline:
         polygons = pr.list_vectorize(raster_list, thresholds, self.crs, self.transform)
 
         vector_stack = pr.list_zonal_stats2(polygons, param_list, self.crs, self.transform)
+
+        vector_stack = self.assign_color(vector_stack)
         if driver == "pandas":
             return vector_stack
 
+        # mars_gcs = {
+        #     "proj": "longlat",
+        #     "a": 3396190,
+        #     "rf": 169.894447223612,
+        #     "no_defs": True
+        # }
+        crs_wkt = self.crs.to_wkt() 
+        test_gcs = crs_wkt[0]
+
+        mars_gcs = "GEOGCS[\"GCS_Mars_2000\",DATUM[\"D_Mars_2000\",SPHEROID[\"Mars_2000_IAU_IAG\",3396190,169.894447223612]],PRIMEM[\"Reference_Meridian\",0],UNIT[\"Degree\",0.0174532925199433]]"
+
+        # Reproject to GCS
+        gdf_gcs = vector_stack.to_crs(mars_gcs)
+
         output_dict = self.config.get_output_path()
         process_name = self.config.get_current_process()["name"]
-        utils.save_shapefile(vector_stack, output_dict, f"{process_name}_final", driver=driver)
-    
+        utils.save_shapefile(gdf_gcs, output_dict, f"{process_name}_final.geojson", driver=driver)
+
     def process_parameters(self, param_list):
         """
         Process the raster data based on the configuration.
@@ -215,6 +233,25 @@ class ProcessingPipeline:
             thresholds.insert(0, 0)  # Insert a zero threshold for the mask
         
         return thresholds
+
+    def assign_color(self, gdf, colormap="viridis"):
+        """
+        Assign colors to the geometries in the GeoDataFrame based on the thresholds.
+
+        Args:
+            gdf: The GeoDataFrame containing the geometries.
+            colormap (str): The name of the matplotlib colormap to use for coloring the geometries.
+
+        Returns:
+            GeoDataFrame: The input GeoDataFrame with an added 'color' column.
+        """
+
+        thresholds = gdf['value'].unique()
+        cmap = plt.get_cmap(colormap, len(thresholds))
+        color_map = {val: mcolors.to_hex(cmap(i)) for i, val in enumerate(sorted(thresholds))}
+
+        gdf['hex_color'] = gdf['value'].map(color_map)
+        return gdf
     
     def get_task_param(self, task, parameter):
         """
