@@ -20,8 +20,6 @@ class ProcessingPipeline:
         yaml_file (str): The path to the YAML file containing the processing configuration.
     """
     def __init__(self, config):
-        # self.yaml_path = yaml_path
-        # self.config = cfg.Config(self.yaml_path)
         self.config = config
         self.crs = None
         self.transform = None
@@ -35,20 +33,10 @@ class ProcessingPipeline:
         # for process_name, process in tqdm(self.config.processes.items(), desc="Processing Processes"):
         process = self.config.get_current_process()
         print()
-        for _ in tqdm(range(1), desc=f"Processing: {process["name"]}"):
-            # self.config.set_current_process(process_name)
-            
+        for _ in tqdm(range(1), desc=f"Processing: {process["name"]}"):     
             param_list = self.config.get_parameters_list()
-
             processed_rasters = self.process_parameters(param_list)
-            # utils.show_raster(processed_rasters[1], title=f"{process_name} - Processed Raster 1")
-            # utils.show_raster(processed_rasters[-1], title=f"{process_name} - Processed Raster 10")
-
             self.vectorize(processed_rasters, param_list)
-
-            # zonal_stats = self.calculate_stats(process, processed_rasters, param_list)
-
-            # self.process_vector(process, processed_rasters, zonal_stats)
     
     def vectorize(self, raster_list, param_list):
         """
@@ -68,7 +56,7 @@ class ProcessingPipeline:
 
         vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform)
 
-        vector_stack = self.assign_color(vector_stack)
+        vector_stack = self.assign_color(vector_stack, colormap='Blues')
         if driver == "pandas":
             return vector_stack
 
@@ -88,7 +76,7 @@ class ProcessingPipeline:
 
         output_dict = self.config.get_output_path()
         process_name = self.config.get_current_process()["name"]
-        vo.save_shapefile(gdf_gcs, output_dict, f"{process_name}_final.geojson", driver=driver)
+        vo.save_shapefile(gdf_gcs, output_dict, f"{process_name}_final.shp", driver=driver)
 
     def process_parameters(self, param_list):
         """

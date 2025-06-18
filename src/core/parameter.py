@@ -11,8 +11,8 @@ class Parameter:
         self.mask = False
         self.crs = None
         self.transform = None
-        self.thresholds = thresholds
         self.raster = self.init_raster(raster_path, array, crs, transform)
+        self.thresholds = self.config_thresholds(thresholds)
 
     def init_raster(self, raster_path=None, array=None, crs=None, transform=None):
         """Initialize the raster data from a file or an array."""
@@ -64,3 +64,7 @@ class Parameter:
             self.thresholds = thresholds
         else:
             raise ValueError("Thresholds must be a list.")
+
+    def config_thresholds(self, thresholds):
+        """Configure the thresholds for the parameter."""
+        return ro.get_raster_thresholds(self.raster, thresholds)

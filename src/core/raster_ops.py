@@ -161,6 +161,29 @@ def list_sieve_filter(array, crs, transform, iterations=1, threshold=9, connecte
 # Other
 #===========================================#
 
+def get_raster_thresholds(raster, thresholds=['75p', '85p', '95p']):
+    """
+    Calculate thresholds for a raster based on specified percentiles.
+    
+    Args:
+        raster (numpy.ndarray): Input raster data.
+        percentile_list (list): List of percentiles to calculate thresholds for.
+        
+    Returns:
+        dict: Dictionary with percentile values as keys and corresponding threshold values as values.
+    """
+    temp_thresholds = []
+    for t in thresholds:
+        if isinstance(t, str) and t.endswith('p'):
+            p = float(t[:-1])
+            temp_thresholds.append(np.nanpercentile(raster, p).round(4) )
+        elif isinstance(t, (int, float)):
+            temp_thresholds.append(t)
+        else:
+            raise ValueError(f"Invalid threshold format: {t}. Must be a number or a string ending with 'p'.")
+    
+    return temp_thresholds
+
 def show_raster(raster, cmap='gray', title=None):
     import matplotlib.pyplot as plt
 

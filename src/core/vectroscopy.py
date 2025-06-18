@@ -74,4 +74,4 @@ class Vectroscopy:
         Returns:
             List: A list of vectorized geometries.
         """
-        ProcessingPipeline(self.config).process_file()
+        return ProcessingPipeline(self.config).process_file()
