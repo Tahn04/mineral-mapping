@@ -52,7 +52,7 @@ class ProcessingPipeline:
         """
         driver = self.config.get_driver()
         thresholds = self.assign_thresholds(raster_list, param_list)
-        polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform)
+        polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, simplify_tol=0)
 
         vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform)
 
@@ -110,11 +110,11 @@ class ProcessingPipeline:
 
             elif "boundary" in task_name:
                 iterations = self.config.get_task_param(task, "iterations")
-                radius = self.config.get_task_param(task, "radius")
+                size = self.config.get_task_param(task, "size")
 
                 iterations = 1 if iterations is None else iterations
-                radius = 1 if radius is None else radius
-                raster_list = ro.list_boundary_clean(raster_list, iterations=iterations, radius=radius)
+                size = 3 if size is None else size
+                raster_list = ro.list_boundary_clean(raster_list, iterations=iterations, radius=size)
                 if show_rasters:
                     ro.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
 
@@ -135,6 +135,15 @@ class ProcessingPipeline:
                     transform=self.transform,
                     connectedness=connectedness
                 )
+                if show_rasters:
+                    ro.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
+            elif "open" in task_name:
+                iterations = self.config.get_task_param(task, "iterations")
+                size = self.config.get_task_param(task, "size")
+
+                iterations = 1 if iterations is None else iterations
+                size = 3 if size is None else size
+                raster_list = ro.list_binary_opening(raster_list, iterations=iterations, size=size)
                 if show_rasters:
                     ro.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
 
@@ -234,11 +243,11 @@ class ProcessingPipeline:
             GeoDataFrame: The input GeoDataFrame with an added 'color' column.
         """
 
-        thresholds = gdf['value'].unique()
+        thresholds = gdf['threshold'].unique()
         cmap = plt.get_cmap(colormap, len(thresholds))
         color_map = {val: mcolors.to_hex(cmap(i)) for i, val in enumerate(sorted(thresholds))}
 
-        gdf['hex_color'] = gdf['value'].map(color_map)
+        gdf['hex_color'] = gdf['threshold'].map(color_map)
         return gdf
     
     def assign_spatial_info(self, dataset):

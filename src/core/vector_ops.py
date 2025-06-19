@@ -28,12 +28,13 @@ def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol=200):
     """
     results = [
         # vectorize(raster, threshold, transform, crs, simplify_tol=simplify_tol)
-        dask_vectorize(raster, transform, crs, simplify_tol=200)
+        dask_vectorize(raster, transform, crs, threshold=threshold, simplify_tol=simplify_tol)
         for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Vectorizing", total=len(raster_list))
     ]
+    # show_polygons(results[1], title="Vectorized Raster")
     return results
 
-def vectorize_chunk(chunk, transform, value=1, simplify_tol=0):
+def vectorize_chunk(chunk, transform, value=1, simplify_tol=0, threshold=None):
     """
     Vectorize a chunk (NumPy array).
     Return a list of GeoJSON-like dicts.
@@ -46,10 +47,13 @@ def vectorize_chunk(chunk, transform, value=1, simplify_tol=0):
             poly = shape(geom)
             if simplify_tol:
                 poly = poly.simplify(simplify_tol, preserve_topology=True)
-            result.append({"geometry": poly, "value": value})
+            feature = {"geometry": poly, "value": value}
+            if threshold is not None:
+                feature["threshold"] = threshold
+            result.append(feature)
     return result
 
-def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simplify_tol=0):
+def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simplify_tol=0, threshold=None):
     """
     Vectorize a large raster using Dask with blockwise vectorization.
 
@@ -60,6 +64,7 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
     - chunk_size: size of chunks to break the array into
     - value: pixel value to vectorize
     - simplify_tol: simplification tolerance
+    - threshold: value to add as a column in the output GeoDataFrame
 
     Returns:
     - GeoDataFrame with vectorized polygons
@@ -74,7 +79,7 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
             block = array[i:i+chunk_size[0], j:j+chunk_size[1]].compute()
             if np.any(block == value):
                 block_transform = transform * Affine.translation(j, i)
-                geoms = vectorize_chunk(block, block_transform, value, simplify_tol)
+                geoms = vectorize_chunk(block, block_transform, value, simplify_tol, threshold=threshold)
                 results.extend(geoms)
 
     return gpd.GeoDataFrame(results, crs=crs)
@@ -160,8 +165,10 @@ def zonal_stats(vector_layers, data_raster, pixel_area, crs, transform, param_na
     stats = gpd.GeoDataFrame()
     base_raster = array_to_rasterio(data_raster, transform, crs)
 
-    vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
-    # vector_stack = merge_polygons(vector_layers)
+    # vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
+    vector_stack = merge_polygons(vector_layers)
+    # vector_stack = simplify_raster_geometry(vector_stack, tolerance=200)  # Simplify geometries if needed
+    # gdal_writer = GDALWriter(filename="output.gpkg", layer_name="zonal_stats", driver="GPKG", srs_wkt= crs.to_wkt())
 
     temp = exact_extract(
         base_raster,
@@ -177,9 +184,13 @@ def zonal_stats(vector_layers, data_raster, pixel_area, crs, transform, param_na
             f"{param_name}_sd=stdev"
         ],
         include_geom=True,
-        include_cols="value",
+        include_cols="threshold",
         strategy="raster-sequential", # works when rasters are simplified 
         output='pandas',
+    #     output_options={
+    #     "filename": "zonal_stats.shp",
+    #     "driver": "ESRI Shapefile"
+    # },
         progress=True
     )
 
@@ -204,4 +215,30 @@ def array_to_rasterio(array, transform, crs):
         crs=crs
     ) as dataset:
         dataset.write(array, 1)
+    return memfile.open()
+
+def gdf_to_GDAL(gdf, transform, crs, driver):
+    """
+    Convert a GeoDataFrame to a GDAL dataset.
+    
+    Parameters:
+    - gdf (GeoDataFrame): Input GeoDataFrame.
+    - transform (Affine): Affine transformation for the raster.
+    - crs: Coordinate reference system.
+    - driver: GDAL driver name (e.g., 'GTiff').
+    
+    Returns:
+    - GDAL dataset
+    """
+    memfile = MemoryFile()
+    with memfile.open(
+        driver=driver,
+        height=gdf.shape[0],
+        width=gdf.shape[1],
+        count=1,
+        dtype='uint8',
+        transform=transform,
+        crs=crs
+    ) as dataset:
+        dataset.write(gdf.geometry.values, 1)
     return memfile.open()

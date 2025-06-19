@@ -18,6 +18,8 @@ from skimage.morphology import dilation, erosion, square
 from scipy.ndimage import convolve
 from osgeo import gdal
 import rasterio as rio
+from scipy.ndimage import binary_opening
+from skimage.morphology import square
 
 #===========================================#
 # Processing Functions
@@ -100,19 +102,24 @@ def list_boundary_clean(raster_list, iterations=1, radius=1):
         for raster in tqdm(raster_list, desc="Boundary cleaning")
     ]
 
-def boundary_clean(raster_array, classes=None, iterations=2, radius=3):
-
-    if classes is None:
-        classes = np.unique(raster_array[~np.isnan(raster_array)])
-
-    result = np.copy(raster_array)
+def boundary_clean(raster_array, iterations=2, radius=3):
+    """
+    Smooth binary raster boundaries similar to ArcGIS Boundary Clean tool.
+    
+    Parameters:
+    - raster_array (np.ndarray): Binary array (1 = feature, 0 = background)
+    - iterations (int): How many expand-shrink cycles to perform
+    - radius (int): Structuring element size (larger = more aggressive smoothing)
+    
+    Returns:
+    - np.ndarray: Smoothed binary raster
+    """
+    result = np.copy(raster_array).astype(np.uint8)
     selem = square(radius)
 
     for _ in range(iterations):
-        for cls in classes:
-            mask = result == cls
-            closed = erosion(dilation(mask, selem), selem)
-            result[closed] = cls 
+        expanded = dilation(result, selem)
+        result = erosion(expanded, selem)
 
     return result
 
@@ -156,6 +163,40 @@ def list_sieve_filter(array, crs, transform, iterations=1, threshold=9, connecte
         filtered_array[b] = dst_ds.GetRasterBand(1).ReadAsArray()
 
     return filtered_array
+
+"""Binary Opening"""
+def list_binary_opening(raster_list, iterations, size):
+    """
+    Apply binary opening to a list of rasters.
+    
+    Args:
+        raster_list (list of np.ndarray): List of binary rasters.
+        
+    Returns:
+        list: List of rasters after applying binary opening.
+    """
+    return [
+        _binary_opening(raster, iterations=iterations, size=size)
+        for raster in tqdm(raster_list, desc="Applying binary opening")
+    ]
+
+def _binary_opening(raster, iterations, size):
+    """
+    Apply binary opening to a single raster.
+    
+    Args:
+        raster (np.ndarray): Input binary raster.
+        structure (np.ndarray): Structuring element for the opening operation.
+        
+    Returns:
+        np.ndarray: Raster after applying binary opening.
+    """
+    if not isinstance(raster, np.ndarray):
+        raise ValueError("Input raster must be a NumPy array.")
+    
+    structure=square(size)
+    
+    return binary_opening(raster, structure=structure, iterations=iterations)
 
 #===========================================#
 # Other
