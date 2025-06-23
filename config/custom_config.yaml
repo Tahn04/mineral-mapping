@@ -1,6 +1,6 @@
 processes:
   Indicator:
-    name: FeMgSmectite
+    name: T1250_FeMgSmectite
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
     thresholds:
       median:
@@ -20,17 +20,63 @@ processes:
         - [0.005]
     pipeline:
     - task: majority
-      iterations: 4
+      iterations: 2
+
+    - task: boundary
+      iterations: 2
+      size: 3
 
     - task: sieve
       iterations: 1
+
+    - task: open
+      iterations: 1
     
     vectorization:
-      driver: ESRI Shapefile
+      driver: GeoJSON
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
   
   Parameter:
-    name: T1250_D2300_open
+    name: MC13_SINDEX2_COLOR
+    path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
+    thresholds:
+      median:
+        run: True
+        size: 3
+        iterations: 1
+      parameters:
+        SINDEX2:
+        # - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_SINDEX2.IMG
+        - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_SINDEX2.IMG
+        # - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
+        # - \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
+        # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
+        - [0.005, 0.008, 0.011, 0.014, 0.017, 0.02, 0.023, 0.026, 0.029, 0.032]
+        # - [0.005, 0.0125, 0.02, 0.0275]
+        # - [60p, 70p, 80p]
+      masks:
+    pipeline:
+    - task: majority
+      iterations: 2
+
+    # - task: boundary
+    #   iterations: 2
+    #   size: 3
+
+    - task: sieve
+      iterations: 1
+
+    - task: open
+      iterations: 1
+    
+    vectorization:
+      driver: GeoJSON # "pandas", "ESRI Shapefile", GeoJSON
+      simplify: 200
+      stats: ["area", "mean", "std", "min", "max"]
+      output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+
+  D2300:
+    name: MC13_D2300_COLOR
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
     thresholds:
       median:
@@ -39,11 +85,12 @@ processes:
         iterations: 1
       parameters:
         D2300:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG
-        # - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
+        # - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG
+        - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
         # - \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
         # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
         - [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275]
+        # - [0.005, 0.0125, 0.02, 0.0275]
         # - [60p, 70p, 80p]
       masks:
     pipeline:
@@ -61,7 +108,48 @@ processes:
       iterations: 1
     
     vectorization:
-      driver: ESRI Shapefile # "geojson", "pandas", "ESRI Shapefile", GeoJSON
+      driver: GeoJSON # "geojson", "pandas", "ESRI Shapefile", GeoJSON
       simplify: 200
       stats: ["area", "mean", "std", "min", "max"]
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+
+
+
+# Issue
+# Parameter:
+#     name: T1250_BD2100_2_COLOR
+#     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
+#     thresholds:
+#       median:
+#         run: True
+#         size: 3
+#         iterations: 1
+#       parameters:
+#         D2300:
+#         - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD2100_2.IMG
+#         # - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
+#         # - \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
+#         # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
+#         - [0.005, 0.008, 0.011, 0.014, 0.017, 0.02, 0.023, 0.026, 0.029, 0.032]
+#         # - [0.005, 0.0125, 0.02, 0.0275]
+#         # - [60p, 70p, 80p]
+#       masks:
+#     pipeline:
+#     - task: majority
+#       iterations: 2
+
+#     - task: boundary
+#       iterations: 2
+#       size: 3
+
+#     - task: sieve
+#       iterations: 1
+
+#     - task: open
+#       iterations: 1
+    
+#     vectorization:
+#       driver: GeoJSON # "geojson", "pandas", "ESRI Shapefile", GeoJSON
+#       simplify: 200
+#       stats: ["area", "mean", "std", "min", "max"]
+#       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
