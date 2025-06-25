@@ -11,6 +11,9 @@ from exactextract import exact_extract
 from exactextract.writer import GDALWriter
 from rasterio.features import shapes
 import dask.array as da
+from osgeo import gdal, osr, ogr
+import tempfile
+import rasterio
 
 def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol=200):
     """
@@ -55,7 +58,7 @@ def vectorize_chunk(chunk, transform, value=1, simplify_tol=0, threshold=None):
 
 def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simplify_tol=0, threshold=None):
     """
-    Vectorize a large raster using Dask with blockwise vectorization.
+    Vectorize a large raster using Dask with blockwise vectorization. (256, 256) (512, 512)
 
     Parameters:
     - array: 2D NumPy array or Dask array
@@ -73,12 +76,13 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
         array = da.from_array(array, chunks=chunk_size)
 
     results = []
-
+    affine_transform = Affine(transform[1], transform[2], transform[0],
+                               transform[4], transform[5], transform[3])
     for i in range(0, array.shape[0], chunk_size[0]):
         for j in range(0, array.shape[1], chunk_size[1]):
             block = array[i:i+chunk_size[0], j:j+chunk_size[1]].compute()
             if np.any(block == value):
-                block_transform = transform * Affine.translation(j, i)
+                block_transform = affine_transform * Affine.translation(j, i)
                 geoms = vectorize_chunk(block, block_transform, value, simplify_tol, threshold=threshold)
                 results.extend(geoms)
 
@@ -87,13 +91,29 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
 def merge_polygons(gdfs):
     """
     Merge a list of GeoDataFrames into a single GeoDataFrame.
-    Returns an empty GeoDataFrame if the input list is empty.
+    If threshold values are present, dissolves polygons with the same threshold
+    to handle polygons that were split across tile boundaries.
+    
+    Parameters:
+    - gdfs: List of GeoDataFrames from tiled vectorization
+    
+    Returns:
+    - GeoDataFrame with properly merged polygons
     """
     if not gdfs:
         return gpd.GeoDataFrame()
-    return pd.concat(gdfs, ignore_index=True)
-    # merged = gdf.dissolve(by="value", tolerance=tolerance)
-    # return merged.reset_index(drop=True)
+    
+    # Concatenate all GeoDataFrames
+    merged = pd.concat(gdfs, ignore_index=True)
+    
+    # # If we have threshold values, dissolve by threshold to merge split polygons
+    # if 'threshold' in merged.columns:
+    #     # Dissolve polygons with the same threshold value
+    #     dissolved = merged.dissolve(by='threshold', as_index=True)
+    #     # Convert back to a regular GeoDataFrame and reset index
+    #     return dissolved.reset_index()
+    
+    return merged
 
 def show_polygons(gdf, title=None):
     import matplotlib.pyplot as plt
@@ -129,78 +149,174 @@ def simplify_raster_geometry(gdf, tolerance):
 # Attribute Table Operations
 #=====================================================#
 
-def list_zonal_stats(polygons, param_list, crs, transform):
-    """
-    Calculate zonal statistics for a list of polygons and parameters.
-    
-    Parameters:
-    - polygons (list): List of polygon geometries.
-    - param_list (list): List of parameters for each polygon.
-    - crs: Coordinate reference system.
-    - transform: Affine transform for the raster.
-    
-    Returns:
-    - list: Zonal statistics for each polygon.
-    """
-    results = []
+def save_tiled_raster(input_array, transform, crs, output_path, tile_size=512):
+    driver = gdal.GetDriverByName("GTiff")
+    height, width = input_array.shape
 
-    x_res = transform[0]
-    y_res = abs(transform[4])  # y res is negative for north-up images
+    dst_ds = driver.Create(
+        output_path,
+        width,
+        height,
+        1,
+        gdal.GDT_Float32,
+        options=[
+            "TILED=YES",
+            f"BLOCKXSIZE={tile_size}",
+            f"BLOCKYSIZE={tile_size}",
+            "COMPRESS=DEFLATE"
+        ]
+    )
+    dst_ds.SetGeoTransform(transform)
+    dst_ds.SetProjection(crs)
+    dst_ds.GetRasterBand(1).WriteArray(input_array)
+    dst_ds.FlushCache()
+    return dst_ds
+
+
+def get_tiled_raster_path(param):
+    if not hasattr(param, '_tiled_path'):
+        temp_dir = tempfile.mkdtemp()
+        param._tiled_path = os.path.join(temp_dir, f"{param.name}_tiled.tif")
+        save_tiled_raster(param.raster, param.get_transform(), param.get_crs(), param._tiled_path)
+    return param._tiled_path
+
+
+def list_zonal_stats(polygons, param_list, crs, transform):
+    results = gpd.GeoDataFrame()
+
+    x_res = transform[1]
+    y_res = abs(transform[5])
     pixel_area = x_res * y_res
 
-    results = gpd.GeoDataFrame()
     for param in param_list:
-        temp = zonal_stats(polygons, param.raster, pixel_area, crs, transform, param.name)
+        temp = zonal_stats(polygons, param, pixel_area)
         if results.empty:
             results = temp
         else:
             results = results.join(temp.set_index(results.index), rsuffix=f"_{param.name}")
             if f"geometry_{param.name}" in results.columns:
                 results = results.drop(columns=[f"geometry_{param.name}"])
-                results = results.drop(columns=[f"value_{param.name}"])
     return results
 
-def zonal_stats(vector_layers, data_raster, pixel_area, crs, transform, param_name):
-    """ Calculate zonal statistics for a raster and vector layers."""
-    stats = gpd.GeoDataFrame()
-    base_raster = array_to_rasterio(data_raster, transform, crs)
 
-    # vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
+def zonal_stats(vector_layers, param, pixel_area):
+    stats = gpd.GeoDataFrame()
+
+    raster_path = get_tiled_raster_path(param)
     vector_stack = merge_polygons(vector_layers)
-    # vector_stack = simplify_raster_geometry(vector_stack, tolerance=200)  # Simplify geometries if needed
-    # gdal_writer = GDALWriter(filename="output.gpkg", layer_name="zonal_stats", driver="GPKG", srs_wkt= crs.to_wkt())
+    import matplotlib.pyplot as plt
+
+    with rasterio.open(raster_path) as src:
+        img = src.read(1)
+        plt.figure(figsize=(8, 6))
+        plt.imshow(img, cmap='viridis')
+        plt.title(f"Raster: {os.path.basename(raster_path)}")
+        plt.colorbar(label='Value')
+        plt.axis('off')
+        plt.show()
+
+    operations = [
+        f"{param.name}_M=mean",
+        f"{param.name}_MDN=median",
+        f"{param.name}_SQKM=count",
+        f"{param.name}_MIN=min",
+        f"{param.name}_MAX=max",
+        f"{param.name}=quantile(q=0.25)",
+        f"{param.name}=quantile(q=0.75)",
+        f"{param.name}_SD=stdev"
+    ]
 
     temp = exact_extract(
-        base_raster,
+        raster_path,
         vector_stack,
-        [
-            f"{param_name}_mean=mean",
-            f"{param_name}_median=median",
-            f"{param_name}area=count",
-            f"{param_name}_min=min",
-            f"{param_name}_max=max",
-            f"{param_name}_p=quantile(q=0.25)",
-            f"{param_name}_p=quantile(q=0.75)",
-            f"{param_name}_sd=stdev"
-        ],
+        operations,
         include_geom=True,
         include_cols="threshold",
-        strategy="raster-sequential", # works when rasters are simplified 
+        # strategy="raster-sequential",
         output='pandas',
-    #     output_options={
-    #     "filename": "zonal_stats.shp",
-    #     "driver": "ESRI Shapefile"
-    # },
         progress=True
     )
 
     stats = pd.concat([stats, temp], ignore_index=True)
+    stats[f"{param.name}_SQKM"] = stats[f"{param.name}_SQKM"] * pixel_area * 0.000001
 
-    stats[f"{param_name}area"] = stats[f"{param_name}area"] * pixel_area * 0.001  # Convert to square kilometers
-  
     float_cols = stats.select_dtypes(include=['float']).columns
-    stats[float_cols] = stats[float_cols].round(4) 
+    stats[float_cols] = stats[float_cols].round(4)
     return stats
+
+# def list_zonal_stats(polygons, param_list, crs, transform):
+#     """
+#     Calculate zonal statistics for a list of polygons and parameters.
+    
+#     Parameters:
+#     - polygons (list): List of polygon geometries.
+#     - param_list (list): List of parameters for each polygon.
+#     - crs: Coordinate reference system.
+#     - transform: Affine transform for the raster.
+    
+#     Returns:
+#     - list: Zonal statistics for each polygon.
+#     """
+#     results = []
+
+#     x_res = transform[0]
+#     y_res = abs(transform[4])  # y res is negative for north-up images
+#     pixel_area = x_res * y_res
+
+#     results = gpd.GeoDataFrame()
+#     for param in param_list:
+#         temp = zonal_stats(polygons, param.raster, param.dataset, pixel_area, crs, transform, param.name)
+#         if results.empty:
+#             results = temp
+#         else:
+#             results = results.join(temp.set_index(results.index), rsuffix=f"_{param.name}")
+#             if f"geometry_{param.name}" in results.columns:
+#                 results = results.drop(columns=[f"geometry_{param.name}"])
+#                 # results = results.drop(columns=[f"value_{param.name}"])
+#     return results
+
+# def zonal_stats(vector_layers, data_raster, dataset, pixel_area, crs, transform, param_name):
+#     """ Calculate zonal statistics for a raster and vector layers."""
+#     stats = gpd.GeoDataFrame()
+#     if dataset is not None:
+#         base_raster = dataset
+#     else:
+#         base_raster = array_to_gdal(data_raster, transform, crs)
+    
+#     # vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
+#     vector_stack = merge_polygons(vector_layers)
+
+#     temp = exact_extract(
+#         base_raster,
+#         vector_stack,
+#         [
+#             f"{param_name}_M=mean",
+#             f"{param_name}_MDN=median",
+#             f"{param_name}_SQKM=count",
+#             f"{param_name}_MIN=min",
+#             f"{param_name}_MAX=max",
+#             f"{param_name}=quantile(q=0.25)",
+#             f"{param_name}=quantile(q=0.75)",
+#             f"{param_name}_SD=stdev"
+#         ],
+#         include_geom=True,
+#         include_cols="threshold",
+#         strategy="raster-sequential", # works when rasters are simplified 
+#         output='pandas',
+#     #     output_options={
+#     #     "filename": "zonal_stats.shp",
+#     #     "driver": "ESRI Shapefile"
+#     # },
+#         progress=True
+#     )
+
+#     stats = pd.concat([stats, temp], ignore_index=True)
+
+#     stats[f"{param_name}_SQKM"] = stats[f"{param_name}_SQKM"] * pixel_area * 0.000001  # Convert to square kilometers
+  
+#     float_cols = stats.select_dtypes(include=['float']).columns
+#     stats[float_cols] = stats[float_cols].round(4) 
+#     return stats
 
 def array_to_rasterio(array, transform, crs):
     height, width = array.shape
@@ -217,28 +333,18 @@ def array_to_rasterio(array, transform, crs):
         dataset.write(array, 1)
     return memfile.open()
 
-def gdf_to_GDAL(gdf, transform, crs, driver):
-    """
-    Convert a GeoDataFrame to a GDAL dataset.
-    
-    Parameters:
-    - gdf (GeoDataFrame): Input GeoDataFrame.
-    - transform (Affine): Affine transformation for the raster.
-    - crs: Coordinate reference system.
-    - driver: GDAL driver name (e.g., 'GTiff').
-    
-    Returns:
-    - GDAL dataset
-    """
-    memfile = MemoryFile()
-    with memfile.open(
-        driver=driver,
-        height=gdf.shape[0],
-        width=gdf.shape[1],
-        count=1,
-        dtype='uint8',
-        transform=transform,
-        crs=crs
-    ) as dataset:
-        dataset.write(gdf.geometry.values, 1)
-    return memfile.open()
+def array_to_gdal(array, transform, crs):
+    """ Convert a NumPy array to an in-memory GDAL raster dataset. """
+    height, width = array.shape
+    mem_driver = gdal.GetDriverByName('MEM')
+    dataset = mem_driver.Create('', width, height, 1, gdal.GDT_Float32)
+    dataset.SetGeoTransform(transform)
+
+    srs = osr.SpatialReference()
+    srs.ImportFromWkt(crs)
+    dataset.SetProjection(srs.ExportToWkt())
+
+    band = dataset.GetRasterBand(1)
+    band.WriteArray(array)
+    band.FlushCache()
+    return dataset

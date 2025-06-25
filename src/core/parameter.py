@@ -3,6 +3,7 @@ import core.raster_ops as ro
 import core.vector_ops as vo
 import numpy as np
 from tqdm import tqdm
+from osgeo import gdal, ogr, osr
 
 class Parameter:
     def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, thresholds=None):
@@ -11,19 +12,30 @@ class Parameter:
         self.mask = False
         self.crs = None
         self.transform = None
+        self.dataset = None
         self.raster = self.init_raster(raster_path, array, crs, transform)
         self.thresholds = self.config_thresholds(thresholds)
 
     def init_raster(self, raster_path=None, array=None, crs=None, transform=None):
         """Initialize the raster data from a file or an array."""
         if raster_path:
-            dataset = ro.open_raster(raster_path)
-            self.crs = dataset.crs
-            self.transform = dataset.transform
-            return ro.open_raster_band(dataset, 1)
+            dataset = gdal.Open(raster_path)
+            band = dataset.GetRasterBand(1)
+            band_array = band.ReadAsArray()
+            self.crs = dataset.GetProjection()
+            self.transform = dataset.GetGeoTransform()
+            if band.GetNoDataValue() is not None:
+                nodata = band.GetNoDataValue()
+                band_array[band_array == nodata] = np.nan
+            self.dataset = dataset
+            return band_array
         elif array is not None:
             if crs is None or transform is None:
                 raise ValueError("Both crs and transform must be provided when using an array.")
+            if hasattr(transform, 'to_gdal'):
+                transform = transform.to_gdal()
+            if hasattr(crs, 'to_wkt'):
+                crs = crs.to_wkt()
             self.crs = crs # if crs is not None else cfg.Config().get('default_crs')
             self.transform = transform # if transform is not None else cfg.Config().get('default_transform')
             return array

@@ -255,6 +255,19 @@ class Config:
         """Get the driver for the current process."""
         process = self.get_current_process()
         return process['vectorization'].get('driver', 'pandas')
+    
+    def get_cs(self):
+        """Get the coordinate reference system for the current process."""
+        process = self.get_current_process()
+        cs = process['vectorization'].get('cs', None)
+        # mars_gcs = "GEOGCS[\"GCS_Mars_2000\",DATUM[\"D_Mars_2000\",SPHEROID[\"Mars_2000_IAU_IAG\",3396190,169.894447223612]],PRIMEM[\"Reference_Meridian\",0],UNIT[\"Degree\",0.0174532925199433]]"
+        if cs is None or cs == "GCS":
+            gcs = "GEOGCS[" + self.crs.split("GEOGCS[")[1].split("]")[0] + "]"
+            return gcs
+        elif cs == "PCS":
+            return self.crs
+        else:
+            return cs
 
     # Setters
     def set_current_process(self, process_name):

@@ -129,23 +129,20 @@ def list_sieve_filter(array, crs, transform, iterations=1, threshold=9, connecte
     bands, height, width = array.shape
     filtered_array = np.empty_like(array, dtype="uint8")
 
-    crs_wkt = crs.to_wkt()
-    # crs_wkt = crs
-
     for b in tqdm(range(bands), desc="Applying Sieve Filter"):
         array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")
 
         # Initialize source in-memory dataset
         src_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
-        src_ds.SetGeoTransform(transform.to_gdal())  # rasterio transform -> GDAL format
-        src_ds.SetProjection(crs_wkt)
+        src_ds.SetGeoTransform(transform)  # rasterio transform -> GDAL format
+        src_ds.SetProjection(crs)
         src_ds.GetRasterBand(1).WriteArray(array_uint8)
 
         for _ in range(iterations):
             # Create new MEM dataset for output
             dst_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
-            dst_ds.SetGeoTransform(transform.to_gdal())
-            dst_ds.SetProjection(crs_wkt)
+            dst_ds.SetGeoTransform(transform)
+            dst_ds.SetProjection(crs)
 
             # Apply sieve filter
             gdal.SieveFilter(
