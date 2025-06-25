@@ -73,10 +73,10 @@ class ProcessingPipeline:
         # }
         # test_gcs = crs_wkt.split("GEOGCS[")[1].split("]")[0]
 
-        mars_gcs = "GEOGCS[\"GCS_Mars_2000\",DATUM[\"D_Mars_2000\",SPHEROID[\"Mars_2000_IAU_IAG\",3396190,169.894447223612]],PRIMEM[\"Reference_Meridian\",0],UNIT[\"Degree\",0.0174532925199433]]"
-
+        
+        cs =  "GEOGCS[\"GCS_Mars_2000\",DATUM[\"D_Mars_2000\",SPHEROID[\"Mars_2000_IAU_IAG\",3396190,169.894447223612]],PRIMEM[\"Reference_Meridian\",0],UNIT[\"Degree\",0.0174532925199433]]"
         # Reproject to GCS
-        gdf_gcs = vector_stack.to_crs(mars_gcs)
+        gdf_gcs = vector_stack.to_crs(cs)
 
         output_dict = self.config.get_output_path()
         process_name = self.config.get_current_process()["name"]

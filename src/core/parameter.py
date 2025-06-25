@@ -13,6 +13,7 @@ class Parameter:
         self.dataset = None
         self.crs = None
         self.transform = None
+        self.dataset = None
         self.raster = self.init_raster(raster_path, array, crs, transform)
         self.thresholds = self.config_thresholds(thresholds)
 
@@ -29,13 +30,13 @@ class Parameter:
                 band_array[band_array == nodata] = np.nan
             self.dataset = dataset
             return band_array
-            # dataset = ro.open_raster(raster_path)
-            # self.crs = dataset.crs
-            # self.transform = dataset.transform
-            # return ro.open_raster_band(dataset, 1)
         elif array is not None:
             if crs is None or transform is None:
                 raise ValueError("Both crs and transform must be provided when using an array.")
+            if hasattr(transform, 'to_gdal'):
+                transform = transform.to_gdal()
+            if hasattr(crs, 'to_wkt'):
+                crs = crs.to_wkt()
             self.crs = crs # if crs is not None else cfg.Config().get('default_crs')
             self.transform = transform # if transform is not None else cfg.Config().get('default_transform')
             return array
