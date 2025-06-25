@@ -13,7 +13,8 @@ from rasterio.features import shapes
 import dask.array as da
 from osgeo import gdal, osr, ogr
 import tempfile
-import rasterio
+
+
 
 def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol=200):
     """
@@ -31,13 +32,13 @@ def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol=200):
     """
     results = [
         # vectorize(raster, threshold, transform, crs, simplify_tol=simplify_tol)
-        dask_vectorize(raster, transform, crs, threshold=threshold, simplify_tol=simplify_tol)
+        dask_vectorize(raster, transform, crs, simplify_tol=simplify_tol)
         for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Vectorizing", total=len(raster_list))
     ]
     # show_polygons(results[1], title="Vectorized Raster")
     return results
 
-def vectorize_chunk(chunk, transform, value=1, simplify_tol=0, threshold=None):
+def vectorize_chunk(chunk, transform, value=1, simplify_tol=0):
     """
     Vectorize a chunk (NumPy array).
     Return a list of GeoJSON-like dicts.
@@ -50,13 +51,10 @@ def vectorize_chunk(chunk, transform, value=1, simplify_tol=0, threshold=None):
             poly = shape(geom)
             if simplify_tol:
                 poly = poly.simplify(simplify_tol, preserve_topology=True)
-            feature = {"geometry": poly, "value": value}
-            if threshold is not None:
-                feature["threshold"] = threshold
-            result.append(feature)
+            result.append({"geometry": poly, "value": value})
     return result
 
-def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simplify_tol=0, threshold=None):
+def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simplify_tol=0):
     """
     Vectorize a large raster using Dask with blockwise vectorization. (256, 256) (512, 512)
 
@@ -67,7 +65,6 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
     - chunk_size: size of chunks to break the array into
     - value: pixel value to vectorize
     - simplify_tol: simplification tolerance
-    - threshold: value to add as a column in the output GeoDataFrame
 
     Returns:
     - GeoDataFrame with vectorized polygons
@@ -84,6 +81,7 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
             if np.any(block == value):
                 block_transform = affine_transform * Affine.translation(j, i)
                 geoms = vectorize_chunk(block, block_transform, value, simplify_tol, threshold=threshold)
+
                 results.extend(geoms)
 
     return gpd.GeoDataFrame(results, crs=crs)
@@ -190,6 +188,7 @@ def list_zonal_stats(polygons, param_list, crs, transform):
 
     for param in param_list:
         temp = zonal_stats(polygons, param, pixel_area)
+
         if results.empty:
             results = temp
         else:
@@ -201,7 +200,6 @@ def list_zonal_stats(polygons, param_list, crs, transform):
 
 def zonal_stats(vector_layers, param, pixel_area):
     stats = gpd.GeoDataFrame()
-
     raster_path = get_tiled_raster_path(param)
     vector_stack = merge_polygons(vector_layers)
     import matplotlib.pyplot as plt
@@ -243,7 +241,6 @@ def zonal_stats(vector_layers, param, pixel_area):
     float_cols = stats.select_dtypes(include=['float']).columns
     stats[float_cols] = stats[float_cols].round(4)
     return stats
-
 # def list_zonal_stats(polygons, param_list, crs, transform):
 #     """
 #     Calculate zonal statistics for a list of polygons and parameters.
@@ -348,3 +345,4 @@ def array_to_gdal(array, transform, crs):
     band.WriteArray(array)
     band.FlushCache()
     return dataset
+

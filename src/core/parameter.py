@@ -10,6 +10,7 @@ class Parameter:
         self.name = name
         self.raster_path = raster_path
         self.mask = False
+        self.dataset = None
         self.crs = None
         self.transform = None
         self.dataset = None

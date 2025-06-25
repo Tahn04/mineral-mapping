@@ -50,6 +50,11 @@ class ProcessingPipeline:
         Returns:
             List: A list of vectorized geometries.
         """
+        # index = 0
+        # for raster in raster_list:
+        #     ro.save_raster(raster, r'\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs', f"raster_{index}.tif", )
+        #     index += 1
+
         driver = self.config.get_driver()
         thresholds = self.assign_thresholds(raster_list, param_list)
         polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, simplify_tol=0)
@@ -75,7 +80,7 @@ class ProcessingPipeline:
 
         output_dict = self.config.get_output_path()
         process_name = self.config.get_current_process()["name"]
-        vo.save_shapefile(gdf_gcs, output_dict, f"{process_name}_final.shp", driver=driver)
+        vo.save_shapefile(gdf_gcs, output_dict, f"{process_name}_final.geojson", driver=driver)
 
     def process_parameters(self, param_list):
         """
@@ -174,8 +179,8 @@ class ProcessingPipeline:
             median_iterations = self.config.get_median_config().get("iterations", 0)
             median_size = self.config.get_median_config().get("size", 3)
 
-            # preproccessing = param.median_filter(iterations=median_iterations, size=median_size)
-            # utils.show_raster(preproccessing, title="median_filter")
+            # preprocessing = param.median_filter(iterations=median_iterations, size=median_size)
+            # utils.show_raster(preprocessing, title="median_filter")
 
             preproccessing = param.median_filter(iterations=median_iterations, size=median_size)
             # utils.show_raster(test_median, title="new_median_filter")

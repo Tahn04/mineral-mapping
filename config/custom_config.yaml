@@ -2,6 +2,7 @@ processes:
   FeMgSmectite:
     name: T1250_FeMgSmectite
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters
+
     thresholds:
       median:
         run: True
@@ -21,7 +22,7 @@ processes:
     pipeline:
     - task: majority
       iterations: 2
-      
+
     - task: boundary
       iterations: 2
       size: 3
@@ -31,7 +32,6 @@ processes:
 
     - task: open
       iterations: 1
-
     vectorization:
       driver: ESRI Shapefile
       cs: GCS # PCS or GCS
@@ -40,6 +40,7 @@ processes:
   PolySulfate:
     name: T1250_PolySulfate
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters
+
     thresholds:
       median:
         run: True
@@ -126,7 +127,6 @@ processes:
         # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
         - [0.005, 0.008, 0.011, 0.014, 0.017, 0.02, 0.023, 0.026, 0.029, 0.032]
         # - [0.005, 0.0125, 0.02, 0.0275]
-        # - [60p, 70p, 80p]
     masks: {}
     pipeline:
       - task: majority
@@ -173,14 +173,10 @@ processes:
       - task: open
         iterations: 1
     vectorization:
-      driver: ESRI Shapefile # "geojson", "pandas", "ESRI Shapefile", GeoJSON
+      driver: GeoJSON # "geojson", "pandas", "ESRI Shapefile", GeoJSON
       simplify: 200
       stats: ["area", "mean", "std", "min", "max"]
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
-
-  
-  
-  
 
 # Issue
 
@@ -255,3 +251,4 @@ processes:
 #    stats: ["area", "mean", "std", "min", "max"]
 
 #    output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
