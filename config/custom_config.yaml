@@ -251,4 +251,4 @@ processes:
 #    stats: ["area", "mean", "std", "min", "max"]
 
 #    output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
-: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+# : \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs

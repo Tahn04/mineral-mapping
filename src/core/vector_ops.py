@@ -16,7 +16,7 @@ import tempfile
 import rasterio
 from rasterio.mask import mask
 
-def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol, param_list):
+def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol):
     """
     Vectorizes a list of rasters using corresponding threshold values.
 
@@ -32,13 +32,13 @@ def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol, param_
     """
     results = [
         # vectorize(raster, threshold, transform, crs, simplify_tol=simplify_tol)
-        dask_vectorize(raster, transform, crs, threshold=threshold, simplify_tol=simplify_tol, param_list=param_list)
+        dask_vectorize(raster, transform, crs, threshold=threshold, simplify_tol=simplify_tol)
         for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Vectorizing", total=len(raster_list))
     ]
     # show_polygons(results[1], title="Vectorized Raster")
     return results
 
-def vectorize_chunk(chunk, transform, value=1, simplify_tol=0):
+def vectorize_chunk(chunk, transform, value=1, simplify_tol=0, threshold=None):
     """
     Vectorize a chunk (NumPy array).
     Return a list of GeoJSON-like dicts.
@@ -51,14 +51,13 @@ def vectorize_chunk(chunk, transform, value=1, simplify_tol=0):
             poly = shape(geom)
             if simplify_tol:
                 poly = poly.simplify(simplify_tol, preserve_topology=True)
-            properties = {"value": value}
+            feature = {"geometry": poly}
             if threshold is not None:
-                properties["threshold"] = threshold
-            feature = {"geometry": poly, "properties": properties}
+                feature["threshold"] = threshold
             result.append(feature)
     return result
 
-def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simplify_tol=0, threshold=None, param_list=None):
+def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simplify_tol=0, threshold=None):
     """
     Vectorize a large raster using Dask with blockwise vectorization. (256, 256) (512, 512)
 
@@ -76,7 +75,7 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
     if not isinstance(array, da.Array):
         array = da.from_array(array, chunks=chunk_size)
 
-    gdf = gpd.GeoDataFrame()
+    results = []
     affine_transform = Affine(transform[1], transform[2], transform[0],
                                transform[4], transform[5], transform[3])
     for i in range(0, array.shape[0], chunk_size[0]):
@@ -84,98 +83,10 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
             block = array[i:i+chunk_size[0], j:j+chunk_size[1]].compute()
             if np.any(block == value):
                 block_transform = affine_transform * Affine.translation(j, i)
-                geoms = vectorize_chunk(block, block_transform, value, simplify_tol, threshold=threshold)
-                polygons = gpd.GeoDataFrame.from_features(geoms, crs=crs)
-                # results.extend(geom_stats)
-                geom_stats = calculate_stats(polygons, param_list, i, j, chunk_size[0], chunk_size[1], block_transform)
-                gdf = pd.concat([gdf, geom_stats], ignore_index=True)
-    return gdf
+                geoms = vectorize_chunk(block, block_transform, value, simplify_tol, threshold)
+                results.extend(geoms)
 
-def calculate_stats(gdf, param_list, i, j, chunk_i, chunk_j, transform):
-    """
-    Calculate statistics for each geometry in the GeoDataFrame.
-    If param_list is provided, it will calculate statistics for each parameter.
-
-    Parameters:
-    - gdf: GeoDataFrame with geometries
-    - param_list: List of parameters to calculate statistics for
-
-    Returns:
-    - GeoDataFrame with calculated statistics
-    """
-    transform = transform.to_gdal()
-
-    x_res = transform[1]
-    y_res = abs(transform[5])
-    pixel_area = x_res * y_res
-
-    stats = gpd.GeoDataFrame()
-    for param in param_list:
-        raster = param.raster
-        cropped_raster = raster[i:i+chunk_i, j:j+chunk_j]
-        raster_src = array_to_gdal(cropped_raster, transform, param.get_crs())
-
-        temp = mini_zonal_stats(gdf, param, raster_src, pixel_area)
-        # geoms = [f["geometry"] for f in gdf]
-        # cropped, cropped_transform = mask(raster_src, geoms, crop=True, filled=True, nodata=np.nan)
-        # cropped = cropped[0]  # Remove band dimension
-
-        # # Example: calculate mean value within each geometry
-        # for feature in gdf:
-        #     mask_geom = [feature["geometry"]]
-        #     masked, _ = mask(raster_src, mask_geom, crop=True, filled=True, nodata=np.nan)
-        #     feature[f"{param.name}_mean"] = np.nanmean(masked)
-        # stats = gdf
-        stats = pd.concat([stats, temp], ignore_index=True)
-
-    return stats
-
-def mini_zonal_stats(vector_layers, param, raster_src, pixel_area):
-    """
-    Calculate zonal statistics for a raster and vector layers.
-    
-    Parameters:
-    - vector_layers: List of GeoDataFrames with vectorized polygons.
-    - param: Parameter object containing raster data.
-    - raster_src: Raster source (GDAL dataset or similar).
-    - pixel_area: Area of a pixel in square kilometers.
-    
-    Returns:
-    - GeoDataFrame with zonal statistics.
-    """
-    stats = gpd.GeoDataFrame()
-
-    # vector_stack = merge_polygons(vector_layers)
-
-    operations = [
-        f"{param.name}_M=mean",
-        f"{param.name}_MDN=median",
-        f"{param.name}_SQKM=count",
-        f"{param.name}_MIN=min",
-        f"{param.name}_MAX=max",
-        f"{param.name}=quantile(q=0.25)",
-        f"{param.name}=quantile(q=0.75)",
-        f"{param.name}_SD=stdev"
-    ]
-
-    temp = exact_extract(
-        raster_src,
-        vector_layers,
-        operations,
-        include_geom=True,
-        include_cols="threshold",
-        strategy="raster-sequential",
-        output='pandas',
-        progress=True
-    )
-
-    stats = pd.concat([stats, temp], ignore_index=True)
-    stats[f"{param.name}_SQKM"] = stats[f"{param.name}_SQKM"] * pixel_area * 0.000001
-
-    float_cols = stats.select_dtypes(include=['float']).columns
-    stats[float_cols] = stats[float_cols].round(4)
-    
-    return stats
+    return gpd.GeoDataFrame(results, crs=crs)
 
 def merge_polygons(gdfs):
     """
@@ -238,163 +149,163 @@ def simplify_raster_geometry(gdf, tolerance):
 # Attribute Table Operations
 #=====================================================#
 
-def save_tiled_raster(input_array, transform, crs, output_path, tile_size=256):
-    driver = gdal.GetDriverByName("GTiff")
-    height, width = input_array.shape
+# def save_tiled_raster(input_array, transform, crs, output_path, tile_size=256):
+#     driver = gdal.GetDriverByName("GTiff")
+#     height, width = input_array.shape
 
-    dst_ds = driver.Create(
-        output_path,
-        width,
-        height,
-        1,
-        gdal.GDT_Float32,
-        options=[
-            "TILED=YES",
-            f"BLOCKXSIZE={tile_size}",
-            f"BLOCKYSIZE={tile_size}",
-            "COMPRESS=DEFLATE"
-        ]
-    )
-    dst_ds.SetGeoTransform(transform)
-    dst_ds.SetProjection(crs)
-    dst_ds.GetRasterBand(1).WriteArray(input_array)
-    dst_ds.FlushCache()
-    return dst_ds
-
-
-def get_tiled_raster_path(param):
-    if not hasattr(param, '_tiled_path'):
-        temp_dir = tempfile.mkdtemp()
-        param._tiled_path = os.path.join(temp_dir, f"{param.name}_tiled.tif")
-        save_tiled_raster(param.raster, param.get_transform(), param.get_crs(), param._tiled_path)
-    return param._tiled_path
+#     dst_ds = driver.Create(
+#         output_path,
+#         width,
+#         height,
+#         1,
+#         gdal.GDT_Float32,
+#         options=[
+#             "TILED=YES",
+#             f"BLOCKXSIZE={tile_size}",
+#             f"BLOCKYSIZE={tile_size}",
+#             "COMPRESS=DEFLATE"
+#         ]
+#     )
+#     dst_ds.SetGeoTransform(transform)
+#     dst_ds.SetProjection(crs)
+#     dst_ds.GetRasterBand(1).WriteArray(input_array)
+#     dst_ds.FlushCache()
+#     return dst_ds
 
 
-def list_zonal_stats(polygons, param_list, crs, transform):
-    results = gpd.GeoDataFrame()
-
-    x_res = transform[1]
-    y_res = abs(transform[5])
-    pixel_area = x_res * y_res
-
-    for param in param_list:
-        temp = zonal_stats(polygons, param, pixel_area)
-
-        if results.empty:
-            results = temp
-        else:
-            results = results.join(temp.set_index(results.index), rsuffix=f"_{param.name}")
-            if f"geometry_{param.name}" in results.columns:
-                results = results.drop(columns=[f"geometry_{param.name}"])
-    return results
+# def get_tiled_raster_path(param):
+#     if not hasattr(param, '_tiled_path'):
+#         temp_dir = tempfile.mkdtemp()
+#         param._tiled_path = os.path.join(temp_dir, f"{param.name}_tiled.tif")
+#         save_tiled_raster(param.raster, param.get_transform(), param.get_crs(), param._tiled_path)
+#     return param._tiled_path
 
 
-def zonal_stats(vector_layers, param, pixel_area):
-    stats = gpd.GeoDataFrame()
-    raster_path = get_tiled_raster_path(param)
-    vector_stack = merge_polygons(vector_layers)
-
-    operations = [
-        f"{param.name}_M=mean",
-        f"{param.name}_MDN=median",
-        f"{param.name}_SQKM=count",
-        f"{param.name}_MIN=min",
-        f"{param.name}_MAX=max",
-        f"{param.name}=quantile(q=0.25)",
-        f"{param.name}=quantile(q=0.75)",
-        f"{param.name}_SD=stdev"
-    ]
-
-    temp = exact_extract(
-        raster_path,
-        vector_stack,
-        operations,
-        include_geom=True,
-        include_cols="threshold",
-        # strategy="raster-sequential",
-        output='pandas',
-        progress=True
-    )
-
-    stats = pd.concat([stats, temp], ignore_index=True)
-    stats[f"{param.name}_SQKM"] = stats[f"{param.name}_SQKM"] * pixel_area * 0.000001
-
-    float_cols = stats.select_dtypes(include=['float']).columns
-    stats[float_cols] = stats[float_cols].round(4)
-    return stats
 # def list_zonal_stats(polygons, param_list, crs, transform):
-#     """
-#     Calculate zonal statistics for a list of polygons and parameters.
-    
-#     Parameters:
-#     - polygons (list): List of polygon geometries.
-#     - param_list (list): List of parameters for each polygon.
-#     - crs: Coordinate reference system.
-#     - transform: Affine transform for the raster.
-    
-#     Returns:
-#     - list: Zonal statistics for each polygon.
-#     """
-#     results = []
+#     results = gpd.GeoDataFrame()
 
-#     x_res = transform[0]
-#     y_res = abs(transform[4])  # y res is negative for north-up images
+#     x_res = transform[1]
+#     y_res = abs(transform[5])
 #     pixel_area = x_res * y_res
 
-#     results = gpd.GeoDataFrame()
 #     for param in param_list:
-#         temp = zonal_stats(polygons, param.raster, param.dataset, pixel_area, crs, transform, param.name)
+#         temp = zonal_stats(polygons, param, pixel_area)
+
 #         if results.empty:
 #             results = temp
 #         else:
 #             results = results.join(temp.set_index(results.index), rsuffix=f"_{param.name}")
 #             if f"geometry_{param.name}" in results.columns:
 #                 results = results.drop(columns=[f"geometry_{param.name}"])
-#                 # results = results.drop(columns=[f"value_{param.name}"])
 #     return results
 
-# def zonal_stats(vector_layers, data_raster, dataset, pixel_area, crs, transform, param_name):
-#     """ Calculate zonal statistics for a raster and vector layers."""
+
+# def zonal_stats(vector_layers, param, pixel_area):
 #     stats = gpd.GeoDataFrame()
-#     if dataset is not None:
-#         base_raster = dataset
-#     else:
-#         base_raster = array_to_gdal(data_raster, transform, crs)
-    
-#     # vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
+#     raster_path = get_tiled_raster_path(param)
 #     vector_stack = merge_polygons(vector_layers)
 
+#     operations = [
+#         f"{param.name}_M=mean",
+#         f"{param.name}_MDN=median",
+#         f"{param.name}_SQKM=count",
+#         f"{param.name}_MIN=min",
+#         f"{param.name}_MAX=max",
+#         f"{param.name}=quantile(q=0.25)",
+#         f"{param.name}=quantile(q=0.75)",
+#         f"{param.name}_SD=stdev"
+#     ]
+
 #     temp = exact_extract(
-#         base_raster,
+#         raster_path,
 #         vector_stack,
-#         [
-#             f"{param_name}_M=mean",
-#             f"{param_name}_MDN=median",
-#             f"{param_name}_SQKM=count",
-#             f"{param_name}_MIN=min",
-#             f"{param_name}_MAX=max",
-#             f"{param_name}=quantile(q=0.25)",
-#             f"{param_name}=quantile(q=0.75)",
-#             f"{param_name}_SD=stdev"
-#         ],
+#         operations,
 #         include_geom=True,
 #         include_cols="threshold",
-#         strategy="raster-sequential", # works when rasters are simplified 
+#         # strategy="raster-sequential",
 #         output='pandas',
-#     #     output_options={
-#     #     "filename": "zonal_stats.shp",
-#     #     "driver": "ESRI Shapefile"
-#     # },
 #         progress=True
 #     )
 
 #     stats = pd.concat([stats, temp], ignore_index=True)
+#     stats[f"{param.name}_SQKM"] = stats[f"{param.name}_SQKM"] * pixel_area * 0.000001
 
-#     stats[f"{param_name}_SQKM"] = stats[f"{param_name}_SQKM"] * pixel_area * 0.000001  # Convert to square kilometers
-  
 #     float_cols = stats.select_dtypes(include=['float']).columns
-#     stats[float_cols] = stats[float_cols].round(4) 
+#     stats[float_cols] = stats[float_cols].round(4)
 #     return stats
+def list_zonal_stats(polygons, param_list, crs, transform):
+    """
+    Calculate zonal statistics for a list of polygons and parameters.
+    
+    Parameters:
+    - polygons (list): List of polygon geometries.
+    - param_list (list): List of parameters for each polygon.
+    - crs: Coordinate reference system.
+    - transform: Affine transform for the raster.
+    
+    Returns:
+    - list: Zonal statistics for each polygon.
+    """
+    results = []
+
+    x_res = transform[0]
+    y_res = abs(transform[4])  # y res is negative for north-up images
+    pixel_area = x_res * y_res
+
+    results = gpd.GeoDataFrame()
+    for param in param_list:
+        temp = zonal_stats(polygons, param.raster, param.dataset, pixel_area, crs, transform, param.name)
+        if results.empty:
+            results = temp
+        else:
+            results = results.join(temp.set_index(results.index), rsuffix=f"_{param.name}")
+            if f"geometry_{param.name}" in results.columns:
+                results = results.drop(columns=[f"geometry_{param.name}"])
+                # results = results.drop(columns=[f"value_{param.name}"])
+    return results
+
+def zonal_stats(vector_layers, data_raster, dataset, pixel_area, crs, transform, param_name):
+    """ Calculate zonal statistics for a raster and vector layers."""
+    stats = gpd.GeoDataFrame()
+    if dataset is not None:
+        base_raster = dataset
+    else:
+        base_raster = array_to_gdal(data_raster, transform, crs)
+    
+    # vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
+    vector_stack = merge_polygons(vector_layers)
+
+    temp = exact_extract(
+        base_raster,
+        vector_stack,
+        [
+            f"{param_name}_M=mean",
+            f"{param_name}_MDN=median",
+            f"{param_name}_SQKM=count",
+            f"{param_name}_MIN=min",
+            f"{param_name}_MAX=max",
+            f"{param_name}=quantile(q=0.25)",
+            f"{param_name}=quantile(q=0.75)",
+            f"{param_name}_SD=stdev"
+        ],
+        include_geom=True,
+        include_cols="threshold",
+        # strategy="raster-sequential", # works when rasters are simplified 
+        output='pandas',
+    #     output_options={
+    #     "filename": "zonal_stats.shp",
+    #     "driver": "ESRI Shapefile"
+    # },
+        progress=True
+    )
+
+    stats = pd.concat([stats, temp], ignore_index=True)
+
+    stats[f"{param_name}_SQKM"] = stats[f"{param_name}_SQKM"] * pixel_area * 0.000001  # Convert to square kilometers
+  
+    float_cols = stats.select_dtypes(include=['float']).columns
+    stats[float_cols] = stats[float_cols].round(4) 
+    return stats
 
 def array_to_rasterio(array, transform, crs):
     height, width = array.shape
