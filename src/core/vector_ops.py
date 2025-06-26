@@ -13,10 +13,10 @@ from rasterio.features import shapes
 import dask.array as da
 from osgeo import gdal, osr, ogr
 import tempfile
+import rasterio
+from rasterio.mask import mask
 
-
-
-def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol=200):
+def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol, param_list):
     """
     Vectorizes a list of rasters using corresponding threshold values.
 
@@ -32,7 +32,7 @@ def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol=200):
     """
     results = [
         # vectorize(raster, threshold, transform, crs, simplify_tol=simplify_tol)
-        dask_vectorize(raster, transform, crs, simplify_tol=simplify_tol)
+        dask_vectorize(raster, transform, crs, threshold=threshold, simplify_tol=simplify_tol, param_list=param_list)
         for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Vectorizing", total=len(raster_list))
     ]
     # show_polygons(results[1], title="Vectorized Raster")
@@ -51,10 +51,14 @@ def vectorize_chunk(chunk, transform, value=1, simplify_tol=0):
             poly = shape(geom)
             if simplify_tol:
                 poly = poly.simplify(simplify_tol, preserve_topology=True)
-            result.append({"geometry": poly, "value": value})
+            properties = {"value": value}
+            if threshold is not None:
+                properties["threshold"] = threshold
+            feature = {"geometry": poly, "properties": properties}
+            result.append(feature)
     return result
 
-def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simplify_tol=0):
+def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simplify_tol=0, threshold=None, param_list=None):
     """
     Vectorize a large raster using Dask with blockwise vectorization. (256, 256) (512, 512)
 
@@ -72,7 +76,7 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
     if not isinstance(array, da.Array):
         array = da.from_array(array, chunks=chunk_size)
 
-    results = []
+    gdf = gpd.GeoDataFrame()
     affine_transform = Affine(transform[1], transform[2], transform[0],
                                transform[4], transform[5], transform[3])
     for i in range(0, array.shape[0], chunk_size[0]):
@@ -81,10 +85,97 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
             if np.any(block == value):
                 block_transform = affine_transform * Affine.translation(j, i)
                 geoms = vectorize_chunk(block, block_transform, value, simplify_tol, threshold=threshold)
+                polygons = gpd.GeoDataFrame.from_features(geoms, crs=crs)
+                # results.extend(geom_stats)
+                geom_stats = calculate_stats(polygons, param_list, i, j, chunk_size[0], chunk_size[1], block_transform)
+                gdf = pd.concat([gdf, geom_stats], ignore_index=True)
+    return gdf
 
-                results.extend(geoms)
+def calculate_stats(gdf, param_list, i, j, chunk_i, chunk_j, transform):
+    """
+    Calculate statistics for each geometry in the GeoDataFrame.
+    If param_list is provided, it will calculate statistics for each parameter.
 
-    return gpd.GeoDataFrame(results, crs=crs)
+    Parameters:
+    - gdf: GeoDataFrame with geometries
+    - param_list: List of parameters to calculate statistics for
+
+    Returns:
+    - GeoDataFrame with calculated statistics
+    """
+    transform = transform.to_gdal()
+
+    x_res = transform[1]
+    y_res = abs(transform[5])
+    pixel_area = x_res * y_res
+
+    stats = gpd.GeoDataFrame()
+    for param in param_list:
+        raster = param.raster
+        cropped_raster = raster[i:i+chunk_i, j:j+chunk_j]
+        raster_src = array_to_gdal(cropped_raster, transform, param.get_crs())
+
+        temp = mini_zonal_stats(gdf, param, raster_src, pixel_area)
+        # geoms = [f["geometry"] for f in gdf]
+        # cropped, cropped_transform = mask(raster_src, geoms, crop=True, filled=True, nodata=np.nan)
+        # cropped = cropped[0]  # Remove band dimension
+
+        # # Example: calculate mean value within each geometry
+        # for feature in gdf:
+        #     mask_geom = [feature["geometry"]]
+        #     masked, _ = mask(raster_src, mask_geom, crop=True, filled=True, nodata=np.nan)
+        #     feature[f"{param.name}_mean"] = np.nanmean(masked)
+        # stats = gdf
+        stats = pd.concat([stats, temp], ignore_index=True)
+
+    return stats
+
+def mini_zonal_stats(vector_layers, param, raster_src, pixel_area):
+    """
+    Calculate zonal statistics for a raster and vector layers.
+    
+    Parameters:
+    - vector_layers: List of GeoDataFrames with vectorized polygons.
+    - param: Parameter object containing raster data.
+    - raster_src: Raster source (GDAL dataset or similar).
+    - pixel_area: Area of a pixel in square kilometers.
+    
+    Returns:
+    - GeoDataFrame with zonal statistics.
+    """
+    stats = gpd.GeoDataFrame()
+
+    # vector_stack = merge_polygons(vector_layers)
+
+    operations = [
+        f"{param.name}_M=mean",
+        f"{param.name}_MDN=median",
+        f"{param.name}_SQKM=count",
+        f"{param.name}_MIN=min",
+        f"{param.name}_MAX=max",
+        f"{param.name}=quantile(q=0.25)",
+        f"{param.name}=quantile(q=0.75)",
+        f"{param.name}_SD=stdev"
+    ]
+
+    temp = exact_extract(
+        raster_src,
+        vector_layers,
+        operations,
+        include_geom=True,
+        include_cols="threshold",
+        strategy="raster-sequential",
+        output='pandas',
+        progress=True
+    )
+
+    stats = pd.concat([stats, temp], ignore_index=True)
+    stats[f"{param.name}_SQKM"] = stats[f"{param.name}_SQKM"] * pixel_area * 0.000001
+
+    float_cols = stats.select_dtypes(include=['float']).columns
+    stats[float_cols] = stats[float_cols].round(4)
+    
+    return stats
 
 def merge_polygons(gdfs):
     """
@@ -147,7 +238,7 @@ def simplify_raster_geometry(gdf, tolerance):
 # Attribute Table Operations
 #=====================================================#
 
-def save_tiled_raster(input_array, transform, crs, output_path, tile_size=512):
+def save_tiled_raster(input_array, transform, crs, output_path, tile_size=256):
     driver = gdal.GetDriverByName("GTiff")
     height, width = input_array.shape
 
@@ -202,16 +293,6 @@ def zonal_stats(vector_layers, param, pixel_area):
     stats = gpd.GeoDataFrame()
     raster_path = get_tiled_raster_path(param)
     vector_stack = merge_polygons(vector_layers)
-    import matplotlib.pyplot as plt
-
-    with rasterio.open(raster_path) as src:
-        img = src.read(1)
-        plt.figure(figsize=(8, 6))
-        plt.imshow(img, cmap='viridis')
-        plt.title(f"Raster: {os.path.basename(raster_path)}")
-        plt.colorbar(label='Value')
-        plt.axis('off')
-        plt.show()
 
     operations = [
         f"{param.name}_M=mean",

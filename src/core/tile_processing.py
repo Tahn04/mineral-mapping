@@ -57,7 +57,7 @@ class ProcessingPipeline:
 
         driver = self.config.get_driver()
         thresholds = self.assign_thresholds(raster_list, param_list)
-        polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, simplify_tol=0)
+        polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, 0, param_list)
 
         vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform)
 
