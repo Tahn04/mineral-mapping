@@ -38,7 +38,7 @@ def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol, param_
     # show_polygons(results[1], title="Vectorized Raster")
     return results
 
-def vectorize_chunk(chunk, transform, value=1, simplify_tol=0, threshold=None):
+def vectorize_chunk(chunk, transform, value=1, simplify_tol=0):
     """
     Vectorize a chunk (NumPy array).
     Return a list of GeoJSON-like dicts.
@@ -69,7 +69,6 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
     - chunk_size: size of chunks to break the array into
     - value: pixel value to vectorize
     - simplify_tol: simplification tolerance
-    - threshold: value to add as a column in the output GeoDataFrame
 
     Returns:
     - GeoDataFrame with vectorized polygons
@@ -280,6 +279,7 @@ def list_zonal_stats(polygons, param_list, crs, transform):
 
     for param in param_list:
         temp = zonal_stats(polygons, param, pixel_area)
+
         if results.empty:
             results = temp
         else:
@@ -291,7 +291,6 @@ def list_zonal_stats(polygons, param_list, crs, transform):
 
 def zonal_stats(vector_layers, param, pixel_area):
     stats = gpd.GeoDataFrame()
-
     raster_path = get_tiled_raster_path(param)
     vector_stack = merge_polygons(vector_layers)
 
@@ -323,7 +322,6 @@ def zonal_stats(vector_layers, param, pixel_area):
     float_cols = stats.select_dtypes(include=['float']).columns
     stats[float_cols] = stats[float_cols].round(4)
     return stats
-
 # def list_zonal_stats(polygons, param_list, crs, transform):
 #     """
 #     Calculate zonal statistics for a list of polygons and parameters.
@@ -428,3 +426,4 @@ def array_to_gdal(array, transform, crs):
     band.WriteArray(array)
     band.FlushCache()
     return dataset
+
