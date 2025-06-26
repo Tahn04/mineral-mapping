@@ -3,7 +3,8 @@ from pydantic import BaseModel
 import os
 import core.parameter as pm
 import re
-from osgeo import osr
+from osgeo import osr, gdal
+import psutil
 
 class Config:
     """
@@ -22,6 +23,34 @@ class Config:
         self.params = []
         self.load_config()
         self.output_filename = self.create_output_filename()
+        self.config_ram(ram_pct=0.4, verbose=True)  # Configure GDAL cache size based on system memory
+
+    def config_ram(self, ram_pct, verbose):
+        """
+        Configure GDAL's cache size based on system memory.
+
+        Parameters:
+        - ram_pct (float): Fraction (0-1) of total RAM to allocate to GDAL cache.
+        - verbose (bool): Whether to print the configured values.
+
+        Returns:
+        - int: Cache size in MB actually set
+        """
+        if not (0 < ram_pct <= 1):
+            raise ValueError("ram_pct must be between 0 and 1")
+
+        # Get system memory
+        total_ram_bytes = psutil.virtual_memory().total
+        cache_max_bytes = int((total_ram_bytes * ram_pct))
+
+        # Set GDAL cache size
+        gdal.SetCacheMax(cache_max_bytes)
+        gdal.SetConfigOption("GDAL_CACHEMAX", str(cache_max_bytes))  # affects external tools too
+
+        if verbose:
+            print(f"[GDAL] Cache max set to {cache_max_bytes} MB ({ram_pct * 100:.0f}% of total RAM)")
+
+        return cache_max_bytes
 
     def get_parameters_list(self):
         """

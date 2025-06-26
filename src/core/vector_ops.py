@@ -151,36 +151,36 @@ def simplify_raster_geometry(gdf, tolerance):
 # Attribute Table Operations
 #=====================================================#
 
-# def save_tiled_raster(input_array, transform, crs, output_path, tile_size=256):
-#     driver = gdal.GetDriverByName("GTiff")
-#     height, width = input_array.shape
+def save_tiled_raster(input_array, transform, crs, output_path, tile_size=256):
+    driver = gdal.GetDriverByName("GTiff")
+    height, width = input_array.shape
 
-#     dst_ds = driver.Create(
-#         output_path,
-#         width,
-#         height,
-#         1,
-#         gdal.GDT_Float32,
-#         options=[
-#             "TILED=YES",
-#             f"BLOCKXSIZE={tile_size}",
-#             f"BLOCKYSIZE={tile_size}",
-#             "COMPRESS=DEFLATE"
-#         ]
-#     )
-#     dst_ds.SetGeoTransform(transform)
-#     dst_ds.SetProjection(crs)
-#     dst_ds.GetRasterBand(1).WriteArray(input_array)
-#     dst_ds.FlushCache()
-#     return dst_ds
+    dst_ds = driver.Create(
+        output_path,
+        width,
+        height,
+        1,
+        gdal.GDT_Float32,
+        options=[
+            "TILED=YES",
+            f"BLOCKXSIZE={tile_size}",
+            f"BLOCKYSIZE={tile_size}",
+            "COMPRESS=DEFLATE"
+        ]
+    )
+    dst_ds.SetGeoTransform(transform)
+    dst_ds.SetProjection(crs)
+    dst_ds.GetRasterBand(1).WriteArray(input_array)
+    dst_ds.FlushCache()
+    return dst_ds
 
 
-# def get_tiled_raster_path(param):
-#     if not hasattr(param, '_tiled_path'):
-#         temp_dir = tempfile.mkdtemp()
-#         param._tiled_path = os.path.join(temp_dir, f"{param.name}_tiled.tif")
-#         save_tiled_raster(param.raster, param.get_transform(), param.get_crs(), param._tiled_path)
-#     return param._tiled_path
+def get_tiled_raster_path(param):
+    if not hasattr(param, '_tiled_path'):
+        temp_dir = tempfile.mkdtemp()
+        param._tiled_path = os.path.join(temp_dir, f"{param.name}_tiled.tif")
+        save_tiled_raster(param.raster, param.get_transform(), param.get_crs(), param._tiled_path)
+    return param._tiled_path
 
 
 # def list_zonal_stats(polygons, param_list, crs, transform):
@@ -247,10 +247,11 @@ def combine_polygons(gdf_list):
     Returns:
     - GeoDataFrame with merged polygons
     """
-    merged = pd.concat(gdf_list[1:], ignore_index=True)
+    # merged = pd.concat(gdf_list[1:], ignore_index=True)
+    merged = pd.concat(gdf_list, ignore_index=True)
     dissolved = merged.dissolve(by='threshold', as_index=False)
     separated = dissolved.explode(index_parts=True) 
-    separated = pd.concat([gdf_list[0], separated], ignore_index=True) # Add the first GeoDataFrame (mask) back to the merged result
+    # separated = pd.concat([gdf_list[0], separated], ignore_index=True) # Add the first GeoDataFrame (mask) back to the merged result
     cleaned = separated.reset_index(drop=True)
     return cleaned
 
@@ -276,7 +277,7 @@ def list_zonal_stats(polygons, param_list, crs, transform, stats_list):
     results = gpd.GeoDataFrame()
     for param in param_list:
         stats_config = config_stats(stats_list, param.name)  # Get the configured stats for the parameter
-        temp = zonal_stats(polygons, param.raster, param.dataset, pixel_area, crs, transform, param.name, stats_config)
+        temp = zonal_stats(polygons, param.raster, param.dataset, pixel_area, crs, transform, param.name, stats_config, param)
         if results.empty:
             results = temp
         else:
@@ -286,21 +287,21 @@ def list_zonal_stats(polygons, param_list, crs, transform, stats_list):
                 # results = results.drop(columns=[f"value_{param.name}"])
     return results
 
-def zonal_stats(vector_layers, data_raster, dataset, pixel_area, crs, transform, param_name, stats_config):
+def zonal_stats(vector_layers, data_raster, dataset, pixel_area, crs, transform, param_name, stats_config, param):
     """ Calculate zonal statistics for a raster and vector layers."""
     # vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
         # vector_stack = merge_polygons(vector_layers)
     gdf = combine_polygons(vector_layers)
-
+    # gdf = simplify_raster_geometry(gdf, tolerance=200)
     if len(stats_config) != 0:
         empty_gdf = gpd.GeoDataFrame()
         if dataset is not None:
             base_raster = dataset
         else:
             base_raster = array_to_gdal(data_raster, transform, crs)
-        
+        raster_path = get_tiled_raster_path(param)
         temp = exact_extract(
-            base_raster,
+            raster_path,
             gdf,
             stats_config,
             include_geom=True,

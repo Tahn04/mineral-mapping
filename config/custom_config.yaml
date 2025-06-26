@@ -174,7 +174,7 @@ processes:
       driver: ESRI Shapefile # "pandas", "ESRI Shapefile", GeoJSON, GPKG
       cs: GCS # PCS or GCS or any wkt/proj4
       # simplify: 200
-      stats: ["area", "mean", "std", "min", "max", '25p', '75p']
+      stats: ['median'] #["area", "mean", "std", "min", "max", '25p', '75p']
       colormap: Blues # matplotlib colormap
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
       base: 
