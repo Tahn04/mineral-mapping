@@ -85,8 +85,10 @@ def dask_vectorize(array, transform, crs, chunk_size=(512, 512), value=1, simpli
                 block_transform = affine_transform * Affine.translation(j, i)
                 geoms = vectorize_chunk(block, block_transform, value, simplify_tol, threshold)
                 results.extend(geoms)
-
-    return gpd.GeoDataFrame(results, crs=crs)
+    if results:
+        return gpd.GeoDataFrame(results, crs=crs)
+    else:
+        return gpd.GeoDataFrame()
 
 def merge_polygons(gdfs):
     """
@@ -233,7 +235,26 @@ def simplify_raster_geometry(gdf, tolerance):
 #     float_cols = stats.select_dtypes(include=['float']).columns
 #     stats[float_cols] = stats[float_cols].round(4)
 #     return stats
-def list_zonal_stats(polygons, param_list, crs, transform):
+
+def combine_polygons(gdf_list):
+    """
+    Combine polygons from a list of GeoDataFrames by merging geometries that touch or overlap.
+    This helps to reconstruct polygons that were split during tiling.
+
+    Parameters:
+    - gdf_list: List of GeoDataFrames
+
+    Returns:
+    - GeoDataFrame with merged polygons
+    """
+    merged = pd.concat(gdf_list[1:], ignore_index=True)
+    dissolved = merged.dissolve(by='threshold', as_index=False)
+    separated = dissolved.explode(index_parts=True) 
+    separated = pd.concat([gdf_list[0], separated], ignore_index=True) # Add the first GeoDataFrame (mask) back to the merged result
+    cleaned = separated.reset_index(drop=True)
+    return cleaned
+
+def list_zonal_stats(polygons, param_list, crs, transform, stats_list):
     """
     Calculate zonal statistics for a list of polygons and parameters.
     
@@ -248,13 +269,14 @@ def list_zonal_stats(polygons, param_list, crs, transform):
     """
     results = []
 
-    x_res = transform[0]
-    y_res = abs(transform[4])  # y res is negative for north-up images
+    x_res = transform[1]
+    y_res = abs(transform[5])  # y res is negative for north-up images
     pixel_area = x_res * y_res
 
     results = gpd.GeoDataFrame()
     for param in param_list:
-        temp = zonal_stats(polygons, param.raster, param.dataset, pixel_area, crs, transform, param.name)
+        stats_config = config_stats(stats_list, param.name)  # Get the configured stats for the parameter
+        temp = zonal_stats(polygons, param.raster, param.dataset, pixel_area, crs, transform, param.name, stats_config)
         if results.empty:
             results = temp
         else:
@@ -264,48 +286,65 @@ def list_zonal_stats(polygons, param_list, crs, transform):
                 # results = results.drop(columns=[f"value_{param.name}"])
     return results
 
-def zonal_stats(vector_layers, data_raster, dataset, pixel_area, crs, transform, param_name):
+def zonal_stats(vector_layers, data_raster, dataset, pixel_area, crs, transform, param_name, stats_config):
     """ Calculate zonal statistics for a raster and vector layers."""
-    stats = gpd.GeoDataFrame()
-    if dataset is not None:
-        base_raster = dataset
-    else:
-        base_raster = array_to_gdal(data_raster, transform, crs)
-    
     # vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
-    vector_stack = merge_polygons(vector_layers)
+        # vector_stack = merge_polygons(vector_layers)
+    gdf = combine_polygons(vector_layers)
 
-    temp = exact_extract(
-        base_raster,
-        vector_stack,
-        [
-            f"{param_name}_M=mean",
-            f"{param_name}_MDN=median",
-            f"{param_name}_SQKM=count",
-            f"{param_name}_MIN=min",
-            f"{param_name}_MAX=max",
-            f"{param_name}=quantile(q=0.25)",
-            f"{param_name}=quantile(q=0.75)",
-            f"{param_name}_SD=stdev"
-        ],
-        include_geom=True,
-        include_cols="threshold",
-        # strategy="raster-sequential", # works when rasters are simplified 
-        output='pandas',
-    #     output_options={
-    #     "filename": "zonal_stats.shp",
-    #     "driver": "ESRI Shapefile"
-    # },
-        progress=True
-    )
+    if len(stats_config) != 0:
+        empty_gdf = gpd.GeoDataFrame()
+        if dataset is not None:
+            base_raster = dataset
+        else:
+            base_raster = array_to_gdal(data_raster, transform, crs)
+        
+        temp = exact_extract(
+            base_raster,
+            gdf,
+            stats_config,
+            include_geom=True,
+            include_cols="threshold",
+            # strategy="raster-sequential", # works when rasters are simplified 
+            output='pandas',
+        #     output_options={
+        #     "filename": "zonal_stats.shp",
+        #     "driver": "ESRI Shapefile"
+        # },
+            progress=True
+        )
 
-    stats = pd.concat([stats, temp], ignore_index=True)
+        gdf = pd.concat([empty_gdf, temp], ignore_index=True)
 
-    stats[f"{param_name}_SQKM"] = stats[f"{param_name}_SQKM"] * pixel_area * 0.000001  # Convert to square kilometers
-  
-    float_cols = stats.select_dtypes(include=['float']).columns
-    stats[float_cols] = stats[float_cols].round(4) 
-    return stats
+        gdf[f"{param_name}_SQK"] = gdf[f"{param_name}_SQK"] * pixel_area * 0.000001  # Convert to square kilometers
+    
+        float_cols = gdf.select_dtypes(include=['float']).columns
+        gdf[float_cols] = gdf[float_cols].round(4) 
+    return gdf
+
+def config_stats(stats_list, param_name):
+    """configure statistics for a list of stats."""
+    stat_config = []
+    stats_map = {
+            'mean': f"{param_name}_MEN=mean",
+            'median': f"{param_name}_MDN=median",
+            'area': f"{param_name}_SQK=count",
+            'count': f"{param_name}_CNT=count",
+            'min': f"{param_name}_MIN=min",
+            'max': f"{param_name}_MAX=max",
+            'std': f"{param_name}_STD=stdev",
+        }
+    for stat in stats_list:
+        if isinstance(stat, str) and stat.endswith('p'):
+            if len(stat) < 2 or not stat[:-1].isdigit():
+                raise ValueError(f"Invalid percentile format: {stat}. Must be a number followed by 'p'.")
+            p = float(stat[:-1])
+            stat_config.append(f"{param_name}_Q=quantile(q={p/100})")
+        elif stat in stats_map:
+            stat_config.append(stats_map[stat])
+        else:
+            raise ValueError(f"Statistic '{stat}' is not supported. Supported statistics are: {list(stats_map.keys())}")
+    return stat_config
 
 def array_to_rasterio(array, transform, crs):
     height, width = array.shape

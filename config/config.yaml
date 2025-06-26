@@ -16,11 +16,11 @@ processes:
       iterations: 1
     
     vectorization:
-      stats: ["avg", "min", "max", "std"] # "avg", "min", "max", "std", "count", "p{n}"
+      stats: ["avg", "min", "max", "std"] # "avg", "min", "max", "std", "count", "75p"
       driver: shp
-      output_dict: 
-  
-  parameterizatoin: 
+      output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+
+  parameterization:
     name: MC13_D2300
     thresholds:
       # path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters
@@ -82,68 +82,3 @@ processes:
     vectorization:
       driver: SHP
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# PROCESSING_FUNCTIONS = {
-#     "median": apply_median_filter,
-#     "thresholds": apply_thresholds,
-#     "masks": apply_masks,
-#     "majority": apply_majority_filter,
-#     "boundary": apply_boundary_smooth,
-#     "sieve": apply_sieve_filter,
-# }
-# General workflow:
-#   - read data
-#   - meadian filter
-#   - apply thresholds
-#   - generalization
-#   - vectorization
-
-
-    # processessing:
-    #   median:
-    #     size: 3
-    #     iterations: 1
-    #   thresholds: 
-    #     BD1500_2: [0.005, 0.0065, 0.008, 0.0095, 0.011, 0.0125, 0.014, 0.0155, 0.017, 0.0185]
-    #   masks:
-  
-    #   majority:
-    #     size: 3
-    #     iterations: 1
-    #   boundary:
-    #     size: 3
-    #     iterations: 1
-    #   majority1:
-    #     size: 3
-    #     iterations: 1
-    #   sieve:
-    #     size: 3
-    #     iterations: 1
-    #   boundary1:
-    #     size: 3
-    #     iterations: 1

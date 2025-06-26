@@ -50,18 +50,17 @@ class ProcessingPipeline:
         Returns:
             List: A list of vectorized geometries.
         """
-        # index = 0
-        # for raster in raster_list:
-        #     ro.save_raster(raster, r'\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs', f"raster_{index}.tif", )
-        #     index += 1
-
         driver = self.config.get_driver()
         thresholds = self.assign_thresholds(raster_list, param_list)
         polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, 0)
 
-        vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform)
+        stats_list = self.config.get_stats()
+        vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform, stats_list)
 
-        vector_stack = self.assign_color(vector_stack, colormap='Blues')
+        colormap = self.config.get_colormap()
+        if colormap:
+            vector_stack = self.assign_color(vector_stack, colormap=colormap)
+
         if driver == "pandas":
             return vector_stack
 
@@ -71,16 +70,13 @@ class ProcessingPipeline:
         #     "rf": 169.894447223612,
         #     "no_defs": True
         # }
-        # test_gcs = crs_wkt.split("GEOGCS[")[1].split("]")[0]
 
-        
-        cs =  "GEOGCS[\"GCS_Mars_2000\",DATUM[\"D_Mars_2000\",SPHEROID[\"Mars_2000_IAU_IAG\",3396190,169.894447223612]],PRIMEM[\"Reference_Meridian\",0],UNIT[\"Degree\",0.0174532925199433]]"
-        # Reproject to GCS
-        gdf_gcs = vector_stack.to_crs(cs)
+        cs = self.config.get_cs(self.crs)
+        projected_gdf = vector_stack.to_crs(cs)
 
         output_dict = self.config.get_output_path()
-        process_name = self.config.get_current_process()["name"]
-        vo.save_shapefile(gdf_gcs, output_dict, f"{process_name}_final.geojson", driver=driver)
+        filename = self.config.get_output_filename()
+        vo.save_shapefile(projected_gdf, output_dict, filename, driver=driver)
 
     def process_parameters(self, param_list):
         """
@@ -155,7 +151,10 @@ class ProcessingPipeline:
         for i in range(len(raster_list)):
             raster_list[i] = raster_list[i] * mask
         raster_list = list(raster_list)
-        raster_list.insert(0, mask.astype(np.uint8))
+
+        base_check = self.config.get_base_check()
+        if base_check:
+            raster_list.insert(0, mask.astype(np.uint8))
         return raster_list
 
     def threshold(self, param_list):
@@ -190,7 +189,7 @@ class ProcessingPipeline:
                 masks_thresholded_list.append(param.threshold(preproccessing, param.get_thresholds()))
             else:
                 param_thresholded_list.append(param.threshold(preproccessing, param.get_thresholds()))
-            
+
         # Combine the thresholded rasters
         if len(masks_thresholded_list) > 0 or len(param_thresholded_list) > 1:
             self.indication = True
@@ -200,17 +199,17 @@ class ProcessingPipeline:
             
             if combined_mask.ndim == 3 and combined_mask.shape[0] == 1: # Check if alwasy true
                 combined_mask = np.squeeze(combined_mask, axis=0)
-
+            # ro.show_raster(combined_mask, title="mask")
             raster_list = [
                 np.prod(level_rasters, axis=0)
                 for level_rasters in param_levels
             ]
-            
+            # ro.show_raster(raster_list[0], title="threshold - Processed Raster lowest")
             for i in range(len(raster_list)):
                 if raster_list[i].ndim == 3 and raster_list[i].shape[0] == 1: # Check if alwasy false
                     raster_list[i] = np.squeeze(raster_list[i], axis=0)
                 raster_list[i] = raster_list[i] * combined_mask
-
+            # ro.show_raster(raster_list[0], title="threshold - Processed Raster lowest")
             return raster_list
         
         return param_thresholded_list[0]
@@ -228,10 +227,13 @@ class ProcessingPipeline:
         """
         if self.indication:
             size = len(raster_list)
-            thresholds = [i for i in range(size)]
+            thresholds = [i + 1 for i in range(size)]
         else:
-            thresholds = param_list[0].get_thresholds() # only one parameter in this case
-            thresholds.insert(0, 0)  # Insert a zero threshold for the mask
+            thresholds = param_list[0].get_thresholds()
+        
+        base_check = self.config.get_base_check()
+        if base_check:
+            thresholds.insert(0, 0)
         
         return thresholds
 

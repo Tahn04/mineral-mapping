@@ -2,7 +2,6 @@ processes:
   FeMgSmectite:
     name: T1250_FeMgSmectite
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters
-
     thresholds:
       median:
         run: True
@@ -40,26 +39,25 @@ processes:
   PolySulfate:
     name: T1250_PolySulfate
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters
-
     thresholds:
       median:
         run: True
         size: 3
       iterations: 1
-    parameters:
-      SINDEX2:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_SINDEX2.IMG
-        - [0.03, 0.035, 0.04]
-      BD1900_2:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1900_2.IMG
-        - [0.012, 0.015, 0.017]
-    masks:
-      BD1500_2:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1500_2.IMG
-        - [0.005]
-      BD2100_2:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD2100_2.IMG
-        - [0.01]
+      parameters:
+        SINDEX2:
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_SINDEX2.IMG
+          - [0.01, 0.015, 0.02]
+        BD1900_2:
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1900_2.IMG
+          - [0.012, 0.015, 0.017]
+      masks:
+        BD1500_2:
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1500_2.IMG
+          - [0.005]
+        BD2100_2:
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD2100_2.IMG
+          - [0.01]
     pipeline:
       - task: majority
         iterations: 2
@@ -81,21 +79,21 @@ processes:
       median:
         run: True
         size: 3
-      iterations: 1
-    parameters:
-      SINDEX2:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_SINDEX2.IMG
-        - [0.025, 0.035, 0.05]
-      BD2100_2:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD2100_2.IMG
-        - [0.01, 0.025, 0.045]
-    masks:
-      BD1500_2:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1500_2.IMG
-        - [0.005]
-      BD1900_2:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1900_2.IMG
-        - [0.012]
+        iterations: 1
+      parameters:
+        SINDEX2:
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_SINDEX2.IMG
+          - [0.025, 0.035, 0.05]
+        BD2100_2:
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD2100_2.IMG
+          - [0.01, 0.025, 0.05]
+      masks:
+        BD1500_2:
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1500_2.IMG
+          - [0.005]
+        BD1900_2:
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1900_2.IMG
+          - [0.012]
     pipeline:
       - task: majority
         iterations: 2
@@ -117,17 +115,17 @@ processes:
       median:
         run: True
         size: 3
-      iterations: 1
-    parameters:
-      SINDEX2:
-        # - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_SINDEX2.IMG
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_SINDEX2.IMG
-        # - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
-        # - \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
-        # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
-        - [0.005, 0.008, 0.011, 0.014, 0.017, 0.02, 0.023, 0.026, 0.029, 0.032]
-        # - [0.005, 0.0125, 0.02, 0.0275]
-    masks: {}
+        iterations: 1
+      parameters:
+        SINDEX2:
+          # - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_SINDEX2.IMG
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_SINDEX2.IMG
+          # - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
+          # - \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
+          # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
+          - [0.005, 0.008, 0.011, 0.014, 0.017, 0.02, 0.023, 0.026, 0.029, 0.032]
+          # - [0.005, 0.0125, 0.02, 0.0275]
+      masks: {}
     pipeline:
       - task: majority
         iterations: 2
@@ -145,7 +143,7 @@ processes:
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
 
   D2300:
-    name: Lat_test_D2300
+    name: MC13_test_D2300
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters
     thresholds:
       median:
@@ -173,10 +171,15 @@ processes:
       - task: open
         iterations: 1
     vectorization:
-      driver: GeoJSON # "geojson", "pandas", "ESRI Shapefile", GeoJSON
-      simplify: 200
-      stats: ["area", "mean", "std", "min", "max"]
+      driver: ESRI Shapefile # "pandas", "ESRI Shapefile", GeoJSON, GPKG
+      cs: GCS # PCS or GCS or any wkt/proj4
+      # simplify: 200
+      stats: ["area", "mean", "std", "min", "max", '25p', '75p']
+      colormap: Blues # matplotlib colormap
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+      base: 
+        show: True
+        stats: [] #["area", "mean", "std", "min", "max", '25p', '75p']
 
 # Issue
 

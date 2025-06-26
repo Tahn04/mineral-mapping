@@ -3,6 +3,7 @@ from pydantic import BaseModel
 import os
 import core.parameter as pm
 import re
+from osgeo import osr
 
 class Config:
     """
@@ -20,6 +21,7 @@ class Config:
         self.process = process or "default" 
         self.params = []
         self.load_config()
+        self.output_filename = self.create_output_filename()
 
     def get_parameters_list(self):
         """
@@ -43,7 +45,7 @@ class Config:
             if isinstance(value, tuple) and len(value) == 2:
                 # If the value is a list, assume it's a list of arrays
                 param = pm.Parameter(
-                    key, 
+                    self.name_check(key), 
                     array=value[0], 
                     crs=crs, 
                     transform=transform, 
@@ -57,7 +59,7 @@ class Config:
                 if isinstance(value, list):
                     # If the value is a list, assume it's a list of arrays
                     mask_param = pm.Parameter(
-                        key, 
+                        self.name_check(key), 
                         array=value[0], 
                         crs=crs, 
                         transform=transform, 
@@ -67,6 +69,16 @@ class Config:
                     self.params.append(mask_param)
                 else:
                     raise ValueError("Provide thresholds for mask")
+                
+    def name_check(self, name):
+        """
+        Check if the name is valid for a parameter or mask.
+        """
+        if self.get_driver() == "ESRI Shapefile":
+            print("Using ESRI Shapefile driver, truncating name to 6 characters.")
+            return name[:6]
+        else:
+            return name
 
     def config_files(self, rast, mask=None):
         """
@@ -256,19 +268,70 @@ class Config:
         process = self.get_current_process()
         return process['vectorization'].get('driver', 'pandas')
     
-    def get_cs(self):
+    def create_output_filename(self):
+        """Get the output filename for the current process."""
+        driver = self.get_driver()
+        extension_map = {
+            'GeoJSON': 'geojson',
+            'ESRI Shapefile': 'shp',
+            'GPKG': 'gpkg'
+        }
+        file_extension = extension_map.get(driver)
+        if not file_extension:
+            raise ValueError(f"Unknown driver: {driver}")
+
+        name = self.get_current_process()["name"]
+        # Simple sanitization: replace spaces with underscores
+        safe_name = name.replace(" ", "_")
+        return f"{safe_name}_final.{file_extension}"
+    
+    def get_output_filename(self):
+        """Get the output filename for the current process."""
+        return self.output_filename
+
+    def get_cs(self, crs):
         """Get the coordinate reference system for the current process."""
         process = self.get_current_process()
         cs = process['vectorization'].get('cs', None)
-        # mars_gcs = "GEOGCS[\"GCS_Mars_2000\",DATUM[\"D_Mars_2000\",SPHEROID[\"Mars_2000_IAU_IAG\",3396190,169.894447223612]],PRIMEM[\"Reference_Meridian\",0],UNIT[\"Degree\",0.0174532925199433]]"
+        srs = osr.SpatialReference()
+        srs.ImportFromWkt(crs)
+        
         if cs is None or cs == "GCS":
-            gcs = "GEOGCS[" + self.crs.split("GEOGCS[")[1].split("]")[0] + "]"
-            return gcs
+            geogcs = srs.CloneGeogCS()
+            geogcs_wkt = geogcs.ExportToWkt()
+            return geogcs_wkt
         elif cs == "PCS":
-            return self.crs
+            projcs = srs.CloneProjCS()
+            projcs_wkt = projcs.ExportToWkt()
+            return projcs_wkt
         else:
             return cs
 
+    def get_colormap(self):
+        """Get the color map for the current process."""
+        process = self.get_current_process()
+        return process['vectorization'].get('colormap', None)
+
+    def get_stats(self):
+        """Get the statistics configuration for the current process."""
+        process = self.get_current_process()
+        return process['vectorization'].get('stats', [])
+    
+    def get_base_check(self):
+        """Check if the current process is set to run in base mode."""
+        process = self.get_current_process()
+        base_config = process['vectorization'].get('base', None)
+        if isinstance(base_config, dict):
+            return base_config.get('show', False)
+
+    def get_base_stats(self):
+        """Get the base statistics for the current process."""
+        process = self.get_current_process()
+        if self.get_base_check():
+            base_config = process['vectorization'].get('base', None)
+            if isinstance(base_config, dict):
+                return base_config.get('stats', [])
+        return []
     # Setters
     def set_current_process(self, process_name):
         """Set the current process name."""
