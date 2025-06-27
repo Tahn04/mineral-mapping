@@ -236,7 +236,7 @@ def get_tiled_raster_path(param):
 #     stats[float_cols] = stats[float_cols].round(4)
 #     return stats
 
-def combine_polygons(gdf_list):
+def combine_polygons(gdf):
     """
     Combine polygons from a list of GeoDataFrames by merging geometries that touch or overlap.
     This helps to reconstruct polygons that were split during tiling.
@@ -248,9 +248,10 @@ def combine_polygons(gdf_list):
     - GeoDataFrame with merged polygons
     """
     # merged = pd.concat(gdf_list[1:], ignore_index=True)
-    merged = pd.concat(gdf_list, ignore_index=True)
-    dissolved = merged.dissolve(by='threshold', as_index=False)
-    separated = dissolved.explode(index_parts=True) 
+    if isinstance(gdf, list):
+        gdf = pd.concat(gdf, ignore_index=True)
+    dissolved = gdf.dissolve(by='threshold', as_index=False)
+    separated = dissolved.explode(index_parts=True)
     # separated = pd.concat([gdf_list[0], separated], ignore_index=True) # Add the first GeoDataFrame (mask) back to the merged result
     cleaned = separated.reset_index(drop=True)
     return cleaned
@@ -287,6 +288,20 @@ def list_zonal_stats(polygons, param_list, crs, transform, stats_list):
                 # results = results.drop(columns=[f"value_{param.name}"])
     return results
 
+import rioxarray
+import xarray as xr
+def rioxarray_zonal_stats(gdf, raster_path, stat):
+    da = rioxarray.open_rasterio(raster_path, masked=True).squeeze()
+    results = []
+
+    for idx, row in tqdm(gdf.iterrows(), desc="rioxarray_zonal_stats", total=len(gdf)):
+        clipped = da.rio.clip([row.geometry], gdf.crs, drop=False)
+        val = getattr(clipped, stat)().item()
+        results.append(val)
+
+    gdf[stat] = results
+    return gdf
+
 def zonal_stats(vector_layers, data_raster, dataset, pixel_area, crs, transform, param_name, stats_config, param):
     """ Calculate zonal statistics for a raster and vector layers."""
     # vector_stack = merge_polygons(vector_layers[1:]) # Skip the first layer as it is the mask
@@ -300,18 +315,20 @@ def zonal_stats(vector_layers, data_raster, dataset, pixel_area, crs, transform,
         else:
             base_raster = array_to_gdal(data_raster, transform, crs)
         raster_path = get_tiled_raster_path(param)
+
+        # temp = rioxarray_zonal_stats(gdf, raster_path, stat="median")
         temp = exact_extract(
-            raster_path,
+            base_raster,
             gdf,
             stats_config,
             include_geom=True,
             include_cols="threshold",
             # strategy="raster-sequential", # works when rasters are simplified 
             output='pandas',
-        #     output_options={
-        #     "filename": "zonal_stats.shp",
-        #     "driver": "ESRI Shapefile"
-        # },
+            # output_options={
+            #     "filename": "zonal_stats.shp",
+            #     "driver": "ESRI Shapefile"
+            # },
             progress=True
         )
 

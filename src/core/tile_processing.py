@@ -50,9 +50,11 @@ class ProcessingPipeline:
         Returns:
             List: A list of vectorized geometries.
         """
+
+
         driver = self.config.get_driver()
         thresholds = self.assign_thresholds(raster_list, param_list)
-        polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, 0)
+        polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, 182)
 
         stats_list = self.config.get_stats()
         vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform, stats_list)

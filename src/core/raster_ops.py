@@ -20,6 +20,7 @@ from osgeo import gdal
 import rasterio as rio
 from scipy.ndimage import binary_opening
 from skimage.morphology import square
+from scipy import ndimage
 
 #===========================================#
 # Processing Functions
@@ -198,6 +199,21 @@ def _binary_opening(raster, iterations, size):
 #===========================================#
 # Other
 #===========================================#
+
+def label_clusters(binary_raster, connectivity=1):
+    """
+    Labels connected regions of 1s in a binary raster.
+    
+    Parameters:
+    - binary_raster (np.ndarray): 2D array of 0s and 1s.
+    - connectivity (int): 1 for 4-connected, 2 for 8-connected (diagonals included).
+    
+    Returns:
+    - labeled (np.ndarray): Same shape as input, with unique labels for each cluster.
+    """
+    structure = ndimage.generate_binary_structure(2, connectivity)
+    labeled = ndimage.label(binary_raster, structure=structure)[0]
+    return labeled
 
 def get_raster_thresholds(raster, thresholds=['75p', '85p', '95p']):
     """
