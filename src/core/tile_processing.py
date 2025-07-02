@@ -8,8 +8,10 @@ import core.vector_ops as vo
 import core.parameter as pm
 import numpy as np
 from tqdm import tqdm
+import time
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import shutil
 
 class ProcessingPipeline:
     """
@@ -36,8 +38,8 @@ class ProcessingPipeline:
         for _ in tqdm(range(1), desc=f"Processing: {process["name"]}"):     
             param_list = self.config.get_parameters_list()
             processed_rasters = self.process_parameters(param_list)
-            self.vectorize(processed_rasters, param_list)
-    
+            return self.vectorize(processed_rasters, param_list)
+
     def vectorize(self, raster_list, param_list):
         """
         Vectorize the raster data based on the zonal statistics.
@@ -50,21 +52,30 @@ class ProcessingPipeline:
         Returns:
             List: A list of vectorized geometries.
         """
+        simplification_level = self.config.get_simplification_level() 
 
+        # stats_dict = vo.list_raster_stats(band_array=param_list[0].raster, raster_list=raster_list, stats=["count", "mean", "std", "min", "max", 'median', '75p'])
 
         driver = self.config.get_driver()
         thresholds = self.assign_thresholds(raster_list, param_list)
-        polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, 182)
-
         stats_list = self.config.get_stats()
-        vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform, stats_list)
+
+        # # Old vectorization
+        # start_old = time.time()
+        # polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, simplification_level)
+        # vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform, stats_list)
+        # end_old = time.time()
+        # print(f"Old vectorization took {end_old - start_old:.2f} seconds")
+
+        # New files based vector/stats
+        start_new = time.time()
+        gdf = vo.list_raster_to_shape_gdal(raster_list, thresholds, self.crs, self.transform, param_list, stats_list, simplification_level)
+        end_new = time.time()
+        print(f"New file-based vectorization took {end_new - start_new:.2f} seconds")
 
         colormap = self.config.get_colormap()
         if colormap:
-            vector_stack = self.assign_color(vector_stack, colormap=colormap)
-
-        if driver == "pandas":
-            return vector_stack
+            gdf = self.assign_color(gdf, colormap=colormap)
 
         # mars_gcs = {
         #     "proj": "longlat",
@@ -72,13 +83,17 @@ class ProcessingPipeline:
         #     "rf": 169.894447223612,
         #     "no_defs": True
         # }
-
+        gdf.set_crs(self.crs, inplace=True)
         cs = self.config.get_cs(self.crs)
-        projected_gdf = vector_stack.to_crs(cs)
-
+        projected_gdf = gdf.to_crs(cs) 
+        
+        if driver == "pandas":
+            return projected_gdf
+        
         output_dict = self.config.get_output_path()
         filename = self.config.get_output_filename()
         vo.save_shapefile(projected_gdf, output_dict, filename, driver=driver)
+        return None
 
     def process_parameters(self, param_list):
         """
@@ -251,11 +266,11 @@ class ProcessingPipeline:
             GeoDataFrame: The input GeoDataFrame with an added 'color' column.
         """
 
-        thresholds = gdf['threshold'].unique()
+        thresholds = gdf['Threshold'].unique()
         cmap = plt.get_cmap(colormap, len(thresholds))
         color_map = {val: mcolors.to_hex(cmap(i)) for i, val in enumerate(sorted(thresholds))}
 
-        gdf['hex_color'] = gdf['threshold'].map(color_map)
+        gdf['hex_color'] = gdf['Threshold'].map(color_map)
         return gdf
     
     def assign_spatial_info(self, dataset):

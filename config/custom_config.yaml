@@ -34,6 +34,7 @@ processes:
     vectorization:
       driver: ESRI Shapefile
       cs: GCS # PCS or GCS
+      stats: ['median', "area", "mean", "std", "min", "max", '25p', '75p']
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
 
   PolySulfate:
@@ -106,10 +107,11 @@ processes:
         iterations: 1
     vectorization:
       driver: ESRI Shapefile
+      # stats: ['median', "area", "mean", "std", "min", "max", '25p', '75p']
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
 
   Parameter:
-    name: MC13_SINDEX2_COLOR
+    name: MC13_SINDEX2_72_60_70_80
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters
     thresholds:
       median:
@@ -123,8 +125,8 @@ processes:
           # - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
           # - \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
           # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
-          - [0.005, 0.008, 0.011, 0.014, 0.017, 0.02, 0.023, 0.026, 0.029, 0.032]
-          # - [0.005, 0.0125, 0.02, 0.0275]
+          # - [0.005, 0.008, 0.011, 0.014, 0.017, 0.02, 0.023, 0.026, 0.029, 0.032]
+          - [60p, 70p, 80p]
       masks: {}
     pipeline:
       - task: majority
@@ -137,13 +139,16 @@ processes:
       - task: open
         iterations: 1
     vectorization:
-      driver: GeoJSON # "pandas", "ESRI Shapefile", GeoJSON
-      simplify: 200
+      driver: ESRI Shapefile # "pandas", "ESRI Shapefile", GeoJSON
+      # simplify: 200
+      colormap: Blues
       stats: ["area", "mean", "std", "min", "max"]
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
-
+      base: 
+        show: True
+  
   D2300:
-    name: T1250_D2300_200
+    name: G2_72
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters
     thresholds:
       median:
@@ -152,13 +157,15 @@ processes:
         iterations: 1
       parameters:
         D2300:
-          - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG
+          # - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG
           # - \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
-          # - \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
+          - \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
           # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
-          - [0.0075, 0.0175, 0.0275]
+          # - [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275]
+          # - [0.0075, 0.0175, 0.0275]
           # - [0.005, 0.0125, 0.02, 0.0275]
-          # - [60p, 70p, 80p]
+          # - [75p, 85p, 95p]
+          - [0.005]
       masks: {}
     pipeline:
       - task: majority
@@ -173,8 +180,8 @@ processes:
     vectorization:
       driver: ESRI Shapefile # "pandas", "ESRI Shapefile", GeoJSON, GPKG
       cs: GCS # PCS or GCS or any wkt/proj4
-      # simplify: 200
-      stats: ['median'] #["area", "mean", "std", "min", "max", '25p', '75p']
+      simplify: 0
+      stats: ['median', "area", "mean", "std", "min", "max", '25p', '75p']
       colormap: Blues # matplotlib colormap
       output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
       base: 

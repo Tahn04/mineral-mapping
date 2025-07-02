@@ -4,7 +4,6 @@ import rasterio
 import numpy as np
 from osgeo import gdal, ogr, osr
 
-
 def main():
     """
     Main function to process a tile with specified parameters.
@@ -27,7 +26,7 @@ def main():
     # ).process_indicator()
     config_path = r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\config\custom_config.yaml"
 
-    vp.Vectroscopy.from_config(config_path, process="D2300").vectorize()
+    gdf = vp.Vectroscopy.from_config(config_path, process="D2300").vectorize()
     
     # path = r"\\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG"
     # mc_path = r"\\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG"
