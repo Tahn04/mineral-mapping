@@ -1,7 +1,8 @@
 import yaml
-from pydantic import BaseModel
+# from pydantic import BaseModel
 import os
 import core.parameter as pm
+import core.file_handler as fh
 import re
 from osgeo import osr, gdal
 import psutil
@@ -23,34 +24,36 @@ class Config:
         self.params = []
         self.load_config()
         self.output_filename = self.create_output_filename()
-    #     self.config_ram(ram_pct=0.4, verbose=True)  # Configure GDAL cache size based on system memory
+        gdal.UseExceptions()
+        print(fh.FileHandler().get_directory())
+        self.config_ram(ram_pct=0.4, verbose=True)
 
-    # def config_ram(self, ram_pct, verbose):
-    #     """
-    #     Configure GDAL's cache size based on system memory.
+    def config_ram(self, ram_pct, verbose):
+        """
+        Configure GDAL's cache size based on system memory.
 
-    #     Parameters:
-    #     - ram_pct (float): Fraction (0-1) of total RAM to allocate to GDAL cache.
-    #     - verbose (bool): Whether to print the configured values.
+        Parameters:
+        - ram_pct (float): Fraction (0-1) of total RAM to allocate to GDAL cache.
+        - verbose (bool): Whether to print the configured values.
 
-    #     Returns:
-    #     - int: Cache size in MB actually set
-    #     """
-    #     if not (0 < ram_pct <= 1):
-    #         raise ValueError("ram_pct must be between 0 and 1")
+        Returns:
+        - int: Cache size in MB actually set
+        """
+        if not (0 < ram_pct <= 1):
+            raise ValueError("ram_pct must be between 0 and 1")
 
-    #     # Get system memory
-    #     total_ram_bytes = psutil.virtual_memory().total
-    #     cache_max_bytes = int((total_ram_bytes * ram_pct))
+        # Get system memory
+        total_ram_bytes = psutil.virtual_memory().total
+        cache_max_bytes = int((total_ram_bytes * ram_pct))
 
-    #     # Set GDAL cache size
-    #     gdal.SetCacheMax(cache_max_bytes)
-    #     gdal.SetConfigOption("GDAL_CACHEMAX", str(cache_max_bytes))  # affects external tools too
+        # Set GDAL cache size
+        gdal.SetCacheMax(cache_max_bytes)
+        gdal.SetConfigOption("GDAL_CACHEMAX", str(cache_max_bytes))  # affects external tools too
 
-    #     if verbose:
-    #         print(f"[GDAL] Cache max set to {cache_max_bytes} MB ({ram_pct * 100:.0f}% of total RAM)")
+        if verbose:
+            print(f"[GDAL] Cache max set to {cache_max_bytes} MB ({ram_pct * 100:.0f}% of total RAM)")
 
-    #     return cache_max_bytes
+        return cache_max_bytes
 
     def get_parameters_list(self):
         """
@@ -60,7 +63,56 @@ class Config:
             List: A list of Parameter objects initialized with the raster data.
         """
         return self.params
+
+    def add_parameter(self, array, thresholds=None, crs=None, transform=None, name=None):
+        """
+        Add a new parameter to the configuration.
         
+        Args:
+            array: The raster data as a numpy array.
+            crs: Coordinate Reference System of the raster data.
+            transform: Affine transformation for the raster data.
+            name: Name for the parameter.
+            thresholds: Threshold values for this parameter.
+        """
+        if name is None:
+            raise ValueError("Parameter name must be provided.")
+        
+        param = pm.Parameter(
+            self.name_check(name), 
+            array=array, 
+            crs=crs, 
+            transform=transform, 
+            thresholds=thresholds
+        )
+        self.params.append(param)
+    
+    def add_mask(self, array=None, crs=None, transform=None, name=None, threshold=None):
+        """
+        Add a new mask to the configuration.
+
+        Args:
+            array: The raster data as a numpy array.
+            crs: Coordinate Reference System of the raster data.
+            transform: Affine transformation for the raster data.
+            name: Name for the mask.
+            threshold: Threshold value for the mask.
+        """
+        if name is None:
+            raise ValueError("Mask name must be provided.")
+        if isinstance(threshold, (list, tuple)):
+                raise ValueError("Threshold must be a single number, not a list or tuple.")
+
+        mask = pm.Parameter(
+            self.name_check(name),
+            array=array,
+            crs=crs,
+            transform=transform,
+            thresholds=threshold
+        )
+        mask.mask = True
+        self.params.append(mask)
+
     def config_array(self, param, crs, transform, mask=None):
         """
         Initialize the configuration with an array and its metadata.
@@ -300,6 +352,8 @@ class Config:
     def create_output_filename(self):
         """Get the output filename for the current process."""
         driver = self.get_driver()
+        if driver == 'pandas':
+            return None
         extension_map = {
             'GeoJSON': 'geojson',
             'ESRI Shapefile': 'shp',

@@ -1,6 +1,7 @@
 import core.config as cfg
 import core.raster_ops as ro
 import core.vector_ops as vo
+import core.file_handler as fh
 import numpy as np
 from tqdm import tqdm
 from osgeo import gdal, ogr, osr
@@ -13,7 +14,6 @@ class Parameter:
         self.dataset = None
         self.crs = None
         self.transform = None
-        self.dataset = None
         self.raster = self.init_raster(raster_path, array, crs, transform)
         self.thresholds = self.config_thresholds(thresholds)
 
@@ -30,6 +30,7 @@ class Parameter:
                 band_array[band_array == nodata] = np.nan
             self.dataset = dataset
             return band_array
+
         elif array is not None:
             if crs is None or transform is None:
                 raise ValueError("Both crs and transform must be provided when using an array.")
@@ -39,7 +40,11 @@ class Parameter:
                 crs = crs.to_wkt()
             self.crs = crs # if crs is not None else cfg.Config().get('default_crs')
             self.transform = transform # if transform is not None else cfg.Config().get('default_transform')
+            
+            path = fh.FileHandler().create_temp_file(prefix=self.name, suffix='tif')
+            self.raster_path = ro.save_raster_gdal(array, crs, transform, path)
             return array
+
         else:
             raise ValueError("Either raster_path or array with crs and transfrom must be provided.")
 
@@ -71,6 +76,12 @@ class Parameter:
         """Return the thresholds for the parameter."""
         return self.thresholds
     
+    def get_raster(self):
+        """Return the raster data."""
+        if self.raster is None:
+            raise ValueError("Raster data is not initialized.")
+        return self.raster
+    
     def set_thresholds(self, thresholds):
         """Set the thresholds for the parameter."""
         if isinstance(thresholds, list):
@@ -81,3 +92,9 @@ class Parameter:
     def config_thresholds(self, thresholds):
         """Configure the thresholds for the parameter."""
         return ro.get_raster_thresholds(self.raster, thresholds)
+    
+    def release(self):
+        """Release the raster dataset."""
+        self.raster = None
+        self.dataset = None
+        self.mask = None

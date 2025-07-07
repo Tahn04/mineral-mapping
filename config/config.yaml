@@ -5,80 +5,23 @@ processes:
       path: 
       median:
         size: 3
-        iterations: 1 # change to 0 to skip median filter
+        iterations: 1 
       parameters:
       masks:
     pipeline:
-    - task: majority
-      iterations: 4
-
-    - task: sieve
-      iterations: 1
-    
-    vectorization:
-      stats: ["avg", "min", "max", "std"] # "avg", "min", "max", "std", "count", "75p"
-      driver: shp
-      output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
-
-  parameterization:
-    name: MC13_D2300
-    thresholds:
-      # path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters
-      path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters # Can be file or directory
-      median:
-        run: True
-        size: 3
+      - task: majority
         iterations: 1
-      parameters:
-        D2300: [0.005, 0.0125, 0.02, 0.0275] # [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275]
-      masks:
-    pipeline:
-    - task: majority
-      iterations: 4
-
-    - task: sieve
-      iterations: 1
-    
-    vectorization:
-      stats: ["avg", "min", "max", "std"] # "avg", "min", "max", "std", "count", "p{n}"
-      driver: shp
-      output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
-
-  Indicator:
-    name: FeMgSmectite
-    path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters 
-    thresholds:
-      median:
-        run: True
-        size: 3
+      # - task: boundary
+      #   iterations: 1
+      - task: sieve
         iterations: 1
-      parameters:
-        D2300:
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG
-        - [0.001, 0.005, 0.01]
-        BD1900_2: 
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1900_2.IMG 
-        - [0.01, 0.015, 0.02]
-      masks:
-        BD1500_2: 
-        - \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_BD1500_2.IMG 
-        - [0.005]
-    pipeline:
-    - task: majority
-      iterations: 1
-
-    - task: boundary
-      iterations: 1
-
-    - task: majority
-      iterations: 3
-
-    - task: sieve
-      iterations: 1
-
-    - task: boundary
-      iterations: 1
-    
+      # - task: open
+      #   iterations: 1
     vectorization:
-      driver: SHP
-      output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+      driver: pandas
+      colormap: 
+      stats: ["count", "mean", "std", "min", "max", "median", "75p", "25p"]
+      output_dict: 
+      base: 
+        show: True
+        stats: False

@@ -8,7 +8,6 @@ import pandas as pd
 from tqdm import tqdm
 from rasterio.io import MemoryFile
 from exactextract import exact_extract
-from exactextract.writer import GDALWriter
 from rasterio.features import shapes
 import dask.array as da
 from osgeo import gdal, osr, ogr
@@ -18,22 +17,19 @@ import rasterio
 from rasterio.mask import mask
 from scipy import ndimage
 import core.raster_ops as ro
-import shutil
-import fiona
+import core.file_handler as fh
+import bottleneck as bn
+# import fiona
+import gc
 
 def list_raster_to_shape_gdal(raster_list, thresholds, crs, transform, param_list, stats_list, simplification_level=0):
     file_paths = []
-    # with TemporaryDirectory() as temp_dir:
-    temp_dir = tempfile.mkdtemp()
     for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Converting rasters to shapes"):
-        vector_file = os.path.join(temp_dir, f"{threshold}_shapes.shp")
+        vector_file = fh.FileHandler().create_temp_file(prefix=f"{threshold}_shapes", suffix='shp')
         raster_to_shape_gdal(raster.astype(np.uint8), transform, crs, vector_file, threshold=threshold)
-        file_paths.append(fiona.open(vector_file))
+        file_paths.append(vector_file)
 
     gdf = list_file_zonal_stats(file_paths, param_list, crs, transform, stats_list, simplification_level)
-    for vec_file in file_paths:
-        vec_file.close()
-    shutil.rmtree(temp_dir)
 
     return gdf
 
@@ -131,39 +127,71 @@ def file_zonal_stats(path_list, param, crs, transform, stats_config, pixel_area,
     """
     gdf = gpd.GeoDataFrame()
     param_name = param.name
-    for path in tqdm(path_list, desc=f"Calculating zonal stats for {param.name}"):
-        if len(stats_config) != 0:
-            if param.raster_path is not None:
+    if len(stats_config) != 0:
+        if param.raster_path is not None:
                 base_raster = param.raster_path
-            else:
-                base_raster = array_to_gdal(param.raster, transform, crs)
-            # raster_path = get_tiled_raster_path(param)
-            # param.release()  # Release the raster dataset to avoid memory issues
-            # shapes = gpd.read_file(path)
-            # shapes = simplify_raster_geometry(shapes, tolerance=simplification_level) if simplification_level > 0 else shapes
-
-            temp = exact_extract(
-                base_raster,
-                path,
-                stats_config,
-                include_geom=True,
-                include_cols="Threshold",
-                # strategy="raster-sequential",
-                output='pandas',
-                progress=True,
-                max_cells_in_memory=10000000000 # Adjust as needed for large datasets
-            )
-            # temp = gpd.GeoDataFrame()
-            gdf = pd.concat([gdf, temp], ignore_index=True)
-
-            if f"{param_name}_SQK" in gdf.columns:
-                gdf[f"{param_name}_SQK"] = gdf[f"{param_name}_SQK"] * pixel_area * 0.000001  # Convert to square kilometers
-
-            float_cols = gdf.select_dtypes(include=['float']).columns
-            gdf[float_cols] = gdf[float_cols].round(4) 
         else:
-            temp = gpd.read_file(path)
-            gdf = pd.concat([gdf, temp], ignore_index=True)
+            base_raster = array_to_gdal(param.raster, transform, crs)
+        # param.release()
+
+    with gdal.Open(base_raster) as rast:
+        # for path in tqdm(path_list, desc=f"Calculating zonal stats for {param.name}"):
+        #     temp = gpd.read_file(path)
+        #     gdf = pd.concat([gdf, temp], ignore_index=True)
+        # if len(stats_config) != 0:
+        #     # with ogr.Open(path) as vect:
+        #     # pre_gdf = gpd.read_file(path)
+        #     # pre_gdf = pre_gdf.dissolve(by='Threshold', as_index=False)  
+
+        #     temp = exact_extract(
+        #         rast,
+        #         gdf,
+        #         stats_config,
+        #         include_geom=True,
+        #         include_cols="Threshold",
+        #         # strategy="raster-sequential",
+        #         output='pandas',
+        #         progress=True,
+        #         max_cells_in_memory=1000000000
+        #     )
+        #     gdf = gpd.GeoDataFrame()
+        #     gdf = pd.concat([gdf, temp], ignore_index=True)
+
+        #     if f"{param_name}_SQK" in gdf.columns:
+        #         gdf[f"{param_name}_SQK"] = gdf[f"{param_name}_SQK"] * pixel_area * 0.000001  # Convert to square kilometers
+
+        #     float_cols = gdf.select_dtypes(include=['float']).columns
+        #     gdf[float_cols] = gdf[float_cols].round(4) 
+        # else:
+        #     temp = gpd.read_file(path)
+        #     gdf = pd.concat([gdf, temp], ignore_index=True)
+        for path in tqdm(path_list, desc=f"Calculating zonal stats for {param.name}"):
+            if len(stats_config) != 0:
+                with ogr.Open(path) as vect:
+                # pre_gdf = gpd.read_file(path)
+                # pre_gdf = pre_gdf.dissolve(by='Threshold', as_index=False)  
+                    temp = exact_extract(
+                        rast,
+                        vect,
+                        stats_config,
+                        include_geom=True,
+                        include_cols="Threshold",
+                        # strategy="raster-sequential",
+                        output='pandas',
+                        progress=True,
+                        max_cells_in_memory=10000000000
+                    )
+
+                gdf = pd.concat([gdf, temp], ignore_index=True)
+
+                if f"{param_name}_SQK" in gdf.columns:
+                    gdf[f"{param_name}_SQK"] = gdf[f"{param_name}_SQK"] * pixel_area * 0.000001  # Convert to square kilometers
+
+                float_cols = gdf.select_dtypes(include=['float']).columns
+                gdf[float_cols] = gdf[float_cols].round(4) 
+            else:
+                temp = gpd.read_file(path)
+                gdf = pd.concat([gdf, temp], ignore_index=True)
 
     return gdf
 
@@ -186,7 +214,7 @@ def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol):
         dask_vectorize(raster, transform, crs, threshold=threshold, simplify_tol=simplify_tol)
         for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Vectorizing", total=len(raster_list))
     ]
-    # show_polygons(results[1], title="Vectorized Raster")
+    results = combine_polygons(results)
     return results
 
 def vectorize_chunk(chunk, transform, value=1, simplify_tol=0, threshold=None):
@@ -463,58 +491,62 @@ def array_to_gdal(array, transform, crs):
     band.FlushCache()
     return dataset
 
-# def list_raster_stats(band_array, raster_list, stats):
-#     for raster in raster_list:
-#         labeled_raster = ro.label_clusters(raster)
-#         results = scipy_zonal_stats(band_array, labeled_raster, stats)
+def list_raster_stats(param_list, raster_list, stats, thresholds):
+    for param in param_list:
+        base_raster = param.get_raster()
+        for raster, threshold in zip(raster_list, thresholds):
+            # print(f"Calculating zonal stats for {param.name} with threshold {threshold}")
+            labeled_raster = ro.label_clusters(raster)
+            results = scipy_zonal_stats(base_raster, labeled_raster, stats)
 
-# def scipy_zonal_stats(band_array, labeled_raster, stats):
-#     """
-#     Calculate zonal statistics using SciPy for a GeoDataFrame and a raster file.
+def scipy_zonal_stats(base_raster, labeled_raster, stats):
+    """
+    Calculate zonal statistics using SciPy for a GeoDataFrame and a raster file.
     
-#     Parameters:
-#     - gdf (GeoDataFrame): GeoDataFrame with polygon geometries.
-#     - raster_path (str): Path to the raster file.
-#     - stat (str): Statistic to calculate ('mean', 'median', 'min', 'max', 'std').
-#     """
-#     # Get the unique labels from the labeled raster
-#     unique_labels = np.arange(0, labeled_raster.max() + 1)
-#     unique_labels = unique_labels[unique_labels != 0]
+    Parameters:
+    - gdf (GeoDataFrame): GeoDataFrame with polygon geometries.
+    - raster_path (str): Path to the raster file.
+    - stat (str): Statistic to calculate ('mean', 'median', 'min', 'max', 'std').
+    """
+    # Get the unique labels from the labeled raster
+    unique_labels = np.arange(0, labeled_raster.max() + 1)
+    unique_labels = unique_labels[unique_labels != 0]
 
-#     # Initialize a dictionary to hold the results
-#     results = {label: {} for label in unique_labels}
-#     for stat in tqdm(stats, desc="Calculating statistics"):
-#         if stat == 'mean':
-#             values = ndimage.mean(band_array, labels=labeled_raster, index=unique_labels)
-#         elif stat == 'count':
-#             values = region_count(labels=labeled_raster, index=unique_labels)
-#         elif stat == 'min':
-#             values = ndimage.labeled_comprehension(band_array, labeled_raster, unique_labels, np.nanmin, float, np.nan)
-#         elif stat == 'max':
-#             values = ndimage.labeled_comprehension(band_array, labeled_raster, unique_labels, np.nanmax, float, np.nan)
-#         elif stat == 'std':
-#             values = ndimage.standard_deviation(band_array, labels=labeled_raster, index=unique_labels)
-#         elif stat == 'median':
-#             values = ndimage.labeled_comprehension(
-#                 band_array, labeled_raster, unique_labels, lambda x: np.nanpercentile(x, 50), float, 0
-#             )
-#         elif stat.endswith('p') and stat[:-1].isdigit():
-#             q = float(stat[:-1])
-#             values = ndimage.labeled_comprehension(
-#                 band_array, labeled_raster, unique_labels, lambda x: np.nanpercentile(x, q), float, 0
-#             )
-#         else:
-#             raise ValueError(f"Statistic '{stat}' is not supported.")
+    # Initialize a dictionary to hold the results
+    results = {label: {} for label in unique_labels}
+    for stat in tqdm(stats, desc="Calculating statistics"):
+        if stat == 'mean':
+            values = ndimage.mean(base_raster, labels=labeled_raster, index=unique_labels)
+        elif stat == 'count':
+            values = region_count(labels=labeled_raster, index=unique_labels)
+        elif stat == 'min':
+            values = ndimage.labeled_comprehension(base_raster, labeled_raster, unique_labels, np.nanmin, float, np.nan)
+        elif stat == 'max':
+            values = ndimage.labeled_comprehension(base_raster, labeled_raster, unique_labels, np.nanmax, float, np.nan)
+        elif stat == 'std':
+            values = ndimage.standard_deviation(base_raster, labels=labeled_raster, index=unique_labels)
+        elif stat == 'median':
+            values = ndimage.labeled_comprehension(base_raster, labeled_raster, unique_labels, bn.nanmedian, float, np.nan)
+            # values = ndimage.labeled_comprehension(
+            #     base_raster, labeled_raster, unique_labels, lambda x: np.nanpercentile(x, 50), float, 0
+            # )
+        elif stat.endswith('p') and stat[:-1].isdigit():
+            q = float(stat[:-1])
+            values = ndimage.labeled_comprehension(
+                base_raster, labeled_raster, unique_labels, lambda x: np.nanpercentile(x, q), float, 0
+            )
+        else:
+            print(f"Statistic '{stat}' is not supported. Skipping.")
 
-#         for label, value in zip(unique_labels, values):
-#             results[label][stat] = value
+        for label, value in zip(unique_labels, values):
+            results[label][stat] = value
 
-#     return results
+    return results
 
-# def region_count(labels, index):
-#     counts = np.bincount(labels.ravel())
-#     # Handle case where some indices might be larger than max label
-#     result = np.zeros(len(index), dtype=int)
-#     valid_mask = index < len(counts)
-#     result[valid_mask] = counts[index[valid_mask]]
-#     return result
+def region_count(labels, index):
+    counts = np.bincount(labels.ravel())
+    # Handle case where some indices might be larger than max label
+    result = np.zeros(len(index), dtype=int)
+    valid_mask = index < len(counts)
+    result[valid_mask] = counts[index[valid_mask]]
+    return result

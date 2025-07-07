@@ -6,6 +6,7 @@ import core.config as cfg
 import core.raster_ops as ro
 import core.vector_ops as vo
 import core.parameter as pm
+import core.file_handler as fh
 import numpy as np
 from tqdm import tqdm
 import time
@@ -33,12 +34,16 @@ class ProcessingPipeline:
         Process the parameter or indicator based on the name.
         """
         # for process_name, process in tqdm(self.config.processes.items(), desc="Processing Processes"):
-        process = self.config.get_current_process()
-        print()
-        for _ in tqdm(range(1), desc=f"Processing: {process["name"]}"):     
-            param_list = self.config.get_parameters_list()
-            processed_rasters = self.process_parameters(param_list)
-            return self.vectorize(processed_rasters, param_list)
+        try:
+            process = self.config.get_current_process()
+            print()
+            for _ in tqdm(range(1), desc=f"Processing: {process["name"]}"):     
+                param_list = self.config.get_parameters_list()
+                processed_rasters = self.process_parameters(param_list)
+                return self.vectorize(processed_rasters, param_list)
+        finally:
+            fh.FileHandler().cleanup() 
+            print("files cleaned up.")
 
     def vectorize(self, raster_list, param_list):
         """
@@ -63,13 +68,14 @@ class ProcessingPipeline:
         # # Old vectorization
         # start_old = time.time()
         # polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, simplification_level)
-        # vector_stack = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform, stats_list)
+        # gdf = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform, stats_list)
         # end_old = time.time()
         # print(f"Old vectorization took {end_old - start_old:.2f} seconds")
 
         # New files based vector/stats
         start_new = time.time()
         gdf = vo.list_raster_to_shape_gdal(raster_list, thresholds, self.crs, self.transform, param_list, stats_list, simplification_level)
+        # gdf = vo.list_raster_stats(param_list, raster_list, stats_list, thresholds)
         end_new = time.time()
         print(f"New file-based vectorization took {end_new - start_new:.2f} seconds")
 
@@ -113,7 +119,7 @@ class ProcessingPipeline:
             ro.show_raster(raster_list[0], title="threshold- Processed Raster lowest")
             # utils.save_raster(raster_list[0], r"\\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters", "MC13_thresholded_0.tif", param_list[0].dataset.profile)
         # boolean filters 
-        for task in self.config.get_pipeline():
+        for task in self.config.get_pipeline() if self.config.get_pipeline() else []:
             task_name = task.get("task", "")
             if "majority" in task_name:
                 iterations = self.config.get_task_param(task, "iterations")

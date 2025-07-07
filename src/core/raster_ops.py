@@ -3,9 +3,7 @@ import os
 
 import numpy as np
 import bottleneck as bn
-from scipy.ndimage import generic_filter
 import numpy as np
-import numba as nb
 from tqdm import tqdm
 from scipy.ndimage import iterate_structure
 from collections import defaultdict
@@ -14,7 +12,7 @@ import geopandas as gpd
 import pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view
 import dask.array as da
-from skimage.morphology import dilation, erosion, square
+from skimage.morphology import dilation, erosion, footprint_rectangle
 from scipy.ndimage import convolve
 from osgeo import gdal
 import rasterio as rio
@@ -116,7 +114,8 @@ def boundary_clean(raster_array, iterations=2, radius=3):
     - np.ndarray: Smoothed binary raster
     """
     result = np.copy(raster_array).astype(np.uint8)
-    selem = square(radius)
+    selem = footprint_rectangle((radius, radius))
+    
 
     for _ in range(iterations):
         expanded = dilation(result, selem)
@@ -133,19 +132,16 @@ def list_sieve_filter(array, crs, transform, iterations=1, threshold=9, connecte
     for b in tqdm(range(bands), desc="Applying Sieve Filter"):
         array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")
 
-        # Initialize source in-memory dataset
         src_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
-        src_ds.SetGeoTransform(transform)  # rasterio transform -> GDAL format
+        src_ds.SetGeoTransform(transform)
         src_ds.SetProjection(crs)
         src_ds.GetRasterBand(1).WriteArray(array_uint8)
 
         for _ in range(iterations):
-            # Create new MEM dataset for output
             dst_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
             dst_ds.SetGeoTransform(transform)
             dst_ds.SetProjection(crs)
 
-            # Apply sieve filter
             gdal.SieveFilter(
                 srcBand=src_ds.GetRasterBand(1),
                 maskBand=None,
@@ -153,11 +149,8 @@ def list_sieve_filter(array, crs, transform, iterations=1, threshold=9, connecte
                 threshold=threshold,
                 connectedness=connectedness
             )
-
-            # Swap for next iteration
             src_ds = dst_ds
 
-        # Read back result
         filtered_array[b] = dst_ds.GetRasterBand(1).ReadAsArray()
 
     return filtered_array
@@ -192,7 +185,7 @@ def _binary_opening(raster, iterations, size):
     if not isinstance(raster, np.ndarray):
         raise ValueError("Input raster must be a NumPy array.")
     
-    structure=square(size)
+    structure=footprint_rectangle((size, size))
     
     return binary_opening(raster, structure=structure, iterations=iterations)
 
@@ -266,3 +259,31 @@ def save_raster(raster, output_path, file_name, profile):
             dst.write(raster, 1)
         else:
             dst.write(raster)
+
+def save_raster_gdal(array, crs, transform, output_path):
+    """
+    Save a raster array to a file using GDAL.
+    
+    Args:
+        array (np.ndarray): The raster data to save.
+        crs (str): The coordinate reference system in WKT format.
+        transform (tuple): The affine transformation parameters.
+        output_path (str): The path where the raster will be saved.
+        
+    Returns:
+        str: The path to the saved raster file.
+    """
+    driver = gdal.GetDriverByName('GTiff')
+    height, width = array.shape
+    dataset = driver.Create(output_path, width, height, 1, gdal.GDT_Float32)
+    
+    if dataset is None:
+        raise IOError(f"Could not create raster file at {output_path}")
+    
+    dataset.SetGeoTransform(transform) # add error handling
+    dataset.SetProjection(crs)
+    
+    dataset.GetRasterBand(1).WriteArray(array)
+    dataset.FlushCache()
+    
+    return output_path
