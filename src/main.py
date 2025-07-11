@@ -25,14 +25,14 @@ def main():
     # gdal_crs = raster.GetProjection()
     # gdal_transform = raster.GetGeoTransform()
 
-    with rasterio.open(path) as src:
-        D2300 = src.read(1, masked=True).filled(np.nan)
-        profile = src.profile  # get metadata
-        transform = src.transform
-        crs = src.crs
-    # thresholds = ['70p', '80p', '90p']
-    thresholds = ["95p", "99p"]
-    name = "D2300"
+    # with rasterio.open(path) as src:
+    #     D2300 = src.read(1, masked=True).filled(np.nan)
+    #     profile = src.profile  # get metadata
+    #     transform = src.transform
+    #     crs = src.crs
+    # # thresholds = ['70p', '80p', '90p']
+    # thresholds = ["95p", "99p"]
+    # name = "D2300"
 
     # gdf = vp.Vectroscopy.from_array(
     #     D2300, 

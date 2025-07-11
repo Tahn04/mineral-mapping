@@ -84,14 +84,39 @@ def majority_filter_fast(binary_array, size=3, iterations=1):
 
     return array
 
-def dask_majority_filter(arr, size=3, iterations=1):
-    def majority_func(block):
-        return majority_filter_fast(block, size=size, iterations=iterations)
-    
-    dask_arr = da.from_array(arr, chunks=(1024, 1024))
-    depth = size // 2
+def dask_list_majority_filter(raster_list, iterations=1, size=3, chunk_size=(1024, 1024)):
+    """Apply majority filter to a list of rasters using Dask for parallelization."""
+    return [
+        dask_majority_filter(raster, size=size, iterations=iterations, chunk_size=chunk_size)
+        for raster in tqdm(raster_list, desc="Applying Dask majority filter")
+    ]
 
-    return dask_arr.map_overlap(majority_func, depth=depth, boundary=0).compute()
+def dask_majority_filter(binary_array, size=3, iterations=1, chunk_size=(1024, 1024)):
+    """Apply majority filter using Dask for memory efficiency and potential speed gains."""
+    # Convert to dask array
+    dask_arr = da.from_array(binary_array, chunks=chunk_size)
+    
+    # Apply majority filter iterations
+    for _ in range(iterations):
+        dask_arr = dask_arr.map_overlap(
+            majority_filter_kernel,
+            size=size,
+            depth=size // 2,
+            boundary='reflect',  # Use reflect instead of nan for binary data
+            dtype=np.uint8
+        )
+    
+    return dask_arr.compute()
+
+def majority_filter_kernel(x, size):
+    """Apply majority filter kernel to a chunk."""
+    kernel = np.ones((size, size), dtype=np.uint8)
+    array = np.nan_to_num(x, nan=0).astype(np.uint8)
+    threshold = (size * size) // 2
+    
+    count = convolve(array, kernel, mode='mirror')
+    return (count > threshold).astype(np.uint8)
+
 
 """Boundary Clean Filter"""
 def list_boundary_clean(raster_list, iterations=1, radius=1):
@@ -124,13 +149,12 @@ def boundary_clean(raster_array, iterations=2, radius=3):
     return result
 
 """Sieve Filter"""
-def list_sieve_filter(array, crs, transform, iterations=1, threshold=9, connectedness=4):
-    array = np.asarray(array)
-    bands, height, width = array.shape
-    filtered_array = np.empty_like(array, dtype="uint8")
+def list_sieve_filter(array_list, crs, transform, iterations=1, threshold=9, connectedness=4):
+    filtered_array = []
 
-    for b in tqdm(range(bands), desc="Applying Sieve Filter"):
-        array_uint8 = np.nan_to_num(array[b], nan=0).astype("uint8")
+    for array in tqdm(array_list, desc="Applying Sieve Filter"):
+        height, width = array.shape
+        array_uint8 = np.nan_to_num(array, nan=0).astype("uint8")
 
         src_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
         src_ds.SetGeoTransform(transform)
@@ -151,7 +175,7 @@ def list_sieve_filter(array, crs, transform, iterations=1, threshold=9, connecte
             )
             src_ds = dst_ds
 
-        filtered_array[b] = dst_ds.GetRasterBand(1).ReadAsArray()
+        filtered_array.append(dst_ds.GetRasterBand(1).ReadAsArray())
 
     return filtered_array
 

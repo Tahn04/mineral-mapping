@@ -13,6 +13,7 @@ import time
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import shutil
+import shapely
 
 class ProcessingPipeline:
     """
@@ -73,14 +74,15 @@ class ProcessingPipeline:
         # print(f"Old vectorization took {end_old - start_old:.2f} seconds")
 
         # New files based vector/stats
-        start_new = time.time()
-        gdf = vo.list_raster_to_shape_gdal(raster_list, thresholds, self.crs, self.transform, param_list, stats_list, simplification_level)
-        # gdf = vo.list_raster_stats(param_list, raster_list, stats_list, thresholds)
-        end_new = time.time()
-        print(f"New file-based vectorization took {end_new - start_new:.2f} seconds")
+        start_old = time.time()
+        file_paths = vo.list_raster_to_shape_gdal(raster_list, thresholds, self.crs, self.transform)
+        gdf = vo.list_file_zonal_stats(file_paths, param_list, self.crs, self.transform, stats_list, simplification_level)
 
+        # gdf = vo.list_raster_stats(param_list, raster_list, stats_list, thresholds)
+        end_old = time.time()
+        print(f"Old vectorization took {end_old - start_old:.2f} seconds")
         colormap = self.config.get_colormap()
-        if colormap:
+        if colormap:    
             gdf = self.assign_color(gdf, colormap=colormap)
 
         # mars_gcs = {
@@ -92,6 +94,8 @@ class ProcessingPipeline:
         gdf.set_crs(self.crs, inplace=True)
         cs = self.config.get_cs(self.crs)
         projected_gdf = gdf.to_crs(cs) 
+
+        projected_gdf.geometry = shapely.set_precision(projected_gdf.geometry, grid_size=0.00001) # not GCS
         
         if driver == "pandas":
             return projected_gdf
@@ -127,7 +131,7 @@ class ProcessingPipeline:
 
                 iterations = 1 if iterations is None else iterations
                 size = 3 if size is None else size
-                raster_list = ro.list_majority_filter(raster_list, iterations=iterations, size=size)
+                raster_list = ro.dask_list_majority_filter(raster_list, iterations=iterations, size=size)
                 if show_rasters:
                     ro.show_raster(raster_list[0], title=f"{task_name} - Processed Raster lowest")
 
@@ -204,14 +208,21 @@ class ProcessingPipeline:
             # preprocessing = param.median_filter(iterations=median_iterations, size=median_size)
             # utils.show_raster(preprocessing, title="median_filter")
 
-            preproccessing = param.median_filter(iterations=median_iterations, size=median_size)
+            median_filtered = param.median_filter(iterations=median_iterations, size=median_size)
+            median_filtered_path = fh.FileHandler().create_temp_file(
+                "median_filtered", 
+                "tif",
+            )
+            ro.save_raster_gdal(median_filtered, param.get_crs(), param.get_transform(), median_filtered_path)
+            param.set_median_filtered_path(median_filtered_path)
             # utils.show_raster(test_median, title="new_median_filter")
             # utils.save_raster(median_filter, r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs", f"T1250_median_filter_D2300.tif", param.dataset.profile)
 
             if param.mask:
-                masks_thresholded_list.append(param.threshold(preproccessing, param.get_thresholds()))
+                masks_thresholded_list.append(param.threshold(median_filtered, param.get_thresholds()))
             else:
-                param_thresholded_list.append(param.threshold(preproccessing, param.get_thresholds()))
+                param_thresholded_list.append(param.threshold(median_filtered, param.get_thresholds()))
+            del median_filtered
 
         # Combine the thresholded rasters
         if len(masks_thresholded_list) > 0 or len(param_thresholded_list) > 1:

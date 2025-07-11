@@ -19,19 +19,47 @@ from scipy import ndimage
 import core.raster_ops as ro
 import core.file_handler as fh
 import bottleneck as bn
-# import fiona
+from shapely.geometry import Polygon
 import gc
 
-def list_raster_to_shape_gdal(raster_list, thresholds, crs, transform, param_list, stats_list, simplification_level=0):
+# def raster_to_geoparquet(binary_array, transform, crs, threshold=0):
+#     """
+#     Convert binary array to GeoParquet file (much faster than shapefile).
+    
+#     Parameters:
+#     - binary_array: 2D numpy array (binary mask)
+#     - transform: affine.Affine transform for the raster
+#     - crs: CRS (can be string, dict, or pyproj.CRS object)
+#     - output_file: output .parquet file path
+#     - threshold: threshold value for metadata
+#     """
+#     # Convert to GeoDataFrame
+#     mask = binary_array.astype(np.uint8)
+#     shapes_gen = shapes(mask, mask=mask, transform=transform)
+    
+#     geoms = []
+#     values = []
+    
+#     for geom, value in shapes_gen:
+#         if value == 1:
+#             geoms.append(Polygon(geom['coordinates'][0]))
+#             values.append(value)
+    
+#     gdf = gpd.GeoDataFrame({
+#         'ID': range(len(geoms)),
+#         'value': values,
+#         'threshold': threshold
+#     }, geometry=geoms, crs=crs)
+    
+#     return gdf
+
+def list_raster_to_shape_gdal(raster_list, thresholds, crs, transform):
     file_paths = []
     for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Converting rasters to shapes"):
         vector_file = fh.FileHandler().create_temp_file(prefix=f"{threshold}_shapes", suffix='shp')
         raster_to_shape_gdal(raster.astype(np.uint8), transform, crs, vector_file, threshold=threshold)
         file_paths.append(vector_file)
-
-    gdf = list_file_zonal_stats(file_paths, param_list, crs, transform, stats_list, simplification_level)
-
-    return gdf
+    return file_paths
 
 def raster_to_shape_gdal(binary_array, transform, crs_wkt, vector_file, threshold=0):
     """
@@ -128,10 +156,11 @@ def file_zonal_stats(path_list, param, crs, transform, stats_config, pixel_area,
     gdf = gpd.GeoDataFrame()
     param_name = param.name
     if len(stats_config) != 0:
-        if param.raster_path is not None:
-                base_raster = param.raster_path
-        else:
-            base_raster = array_to_gdal(param.raster, transform, crs)
+        # if param.raster_path is not None:
+        #         base_raster = param.raster_path
+        # else:
+        #     base_raster = array_to_gdal(param.raster, transform, crs)
+        base_raster = param.get_median_filtered_path()
         # param.release()
 
     with gdal.Open(base_raster) as rast:
@@ -170,6 +199,10 @@ def file_zonal_stats(path_list, param, crs, transform, stats_config, pixel_area,
                 with ogr.Open(path) as vect:
                 # pre_gdf = gpd.read_file(path)
                 # pre_gdf = pre_gdf.dissolve(by='Threshold', as_index=False)  
+                # temp_gdf = gpd.read_file(path)
+                # # Remove polygons with area smaller than a certain threshold (in CRS units)
+                # # temp_gdf = temp_gdf[temp_gdf.geometry.area >= simplification_level]
+                # temp_gdf = simplify_raster_geometry(temp_gdf, tolerance=simplification_level)
                     temp = exact_extract(
                         rast,
                         vect,
@@ -182,13 +215,13 @@ def file_zonal_stats(path_list, param, crs, transform, stats_config, pixel_area,
                         max_cells_in_memory=10000000000
                     )
 
-                gdf = pd.concat([gdf, temp], ignore_index=True)
+                    if f"{param_name}_SQK" in temp.columns:
+                        temp[f"{param_name}_SQK"] = temp[f"{param_name}_SQK"] * pixel_area * 0.000001  # Convert to square kilometers
 
-                if f"{param_name}_SQK" in gdf.columns:
-                    gdf[f"{param_name}_SQK"] = gdf[f"{param_name}_SQK"] * pixel_area * 0.000001  # Convert to square kilometers
+                    float_cols = temp.select_dtypes(include=['float']).columns
+                    temp[float_cols] = temp[float_cols].round(5) 
 
-                float_cols = gdf.select_dtypes(include=['float']).columns
-                gdf[float_cols] = gdf[float_cols].round(4) 
+                    gdf = pd.concat([gdf, temp], ignore_index=True)
             else:
                 temp = gpd.read_file(path)
                 gdf = pd.concat([gdf, temp], ignore_index=True)
@@ -333,10 +366,9 @@ def save_tiled_raster(input_array, transform, crs, output_path, tile_size=256):
 
 def get_tiled_raster_path(param):
     if not hasattr(param, '_tiled_path'):
-        temp_dir = tempfile.mkdtemp()
-        param._tiled_path = os.path.join(temp_dir, f"{param.name}_tiled.tif")
-        save_tiled_raster(param.raster, param.get_transform(), param.get_crs(), param._tiled_path)
-    return param._tiled_path
+        tiled_path = fh.FileHandler().create_temp_file(prefix=f"{param.name}_tiled", suffix='tif')
+        save_tiled_raster(param.raster, param.get_transform(), param.get_crs(), tiled_path)
+    return tiled_path
 
 def combine_polygons(gdf):
     """
@@ -492,12 +524,24 @@ def array_to_gdal(array, transform, crs):
     return dataset
 
 def list_raster_stats(param_list, raster_list, stats, thresholds):
+    gdf = gpd.GeoDataFrame()
     for param in param_list:
         base_raster = param.get_raster()
         for raster, threshold in zip(raster_list, thresholds):
             # print(f"Calculating zonal stats for {param.name} with threshold {threshold}")
             labeled_raster = ro.label_clusters(raster)
+            polygons_paths = list_raster_to_shape_gdal([labeled_raster], [threshold], param.get_crs(), param.get_transform())
+            labeled_gdf = gpd.read_file(polygons_paths[0])
             results = scipy_zonal_stats(base_raster, labeled_raster, stats)
+            for label, stats_dict in results.items():
+                # Find the row in labeled_gdf with matching ID
+                idx = labeled_gdf.index[labeled_gdf['ID'] == label]
+                if len(idx) > 0:
+                    for stat_name, stat_value in stats_dict.items():
+                        labeled_gdf.loc[idx, stat_name] = stat_value
+            gdf = pd.concat([gdf, labeled_gdf], ignore_index=True)
+
+    return gdf
 
 def scipy_zonal_stats(base_raster, labeled_raster, stats):
     """
@@ -519,6 +563,8 @@ def scipy_zonal_stats(base_raster, labeled_raster, stats):
             values = ndimage.mean(base_raster, labels=labeled_raster, index=unique_labels)
         elif stat == 'count':
             values = region_count(labels=labeled_raster, index=unique_labels)
+        elif stat == 'area':
+            values = region_count(labels=labeled_raster, index=unique_labels) # add pixel area calculation if needed
         elif stat == 'min':
             values = ndimage.labeled_comprehension(base_raster, labeled_raster, unique_labels, np.nanmin, float, np.nan)
         elif stat == 'max':
@@ -537,9 +583,10 @@ def scipy_zonal_stats(base_raster, labeled_raster, stats):
             )
         else:
             print(f"Statistic '{stat}' is not supported. Skipping.")
+            continue
 
         for label, value in zip(unique_labels, values):
-            results[label][stat] = value
+            results[label][stat] = round(value, 5)
 
     return results
 

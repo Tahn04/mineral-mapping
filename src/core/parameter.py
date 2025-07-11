@@ -10,6 +10,7 @@ class Parameter:
     def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, thresholds=None):
         self.name = name
         self.raster_path = raster_path
+        self.median_filtered_path = None
         self.mask = False
         self.dataset = None
         self.crs = None
@@ -82,12 +83,20 @@ class Parameter:
             raise ValueError("Raster data is not initialized.")
         return self.raster
     
+    def get_median_filtered_path(self):
+        """Return the path to the median filtered raster."""
+        return self.median_filtered_path
+
     def set_thresholds(self, thresholds):
         """Set the thresholds for the parameter."""
         if isinstance(thresholds, list):
             self.thresholds = thresholds
         else:
             raise ValueError("Thresholds must be a list.")
+
+    def set_median_filtered_path(self, raster_path):
+        """Set the median filtered raster path."""
+        self.median_filtered_path = raster_path
 
     def config_thresholds(self, thresholds):
         """Configure the thresholds for the parameter."""
