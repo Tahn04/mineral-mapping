@@ -36,8 +36,9 @@ class ProcessingPipeline:
         """
         # for process_name, process in tqdm(self.config.processes.items(), desc="Processing Processes"):
         try:
+            fh.FileHandler()
+            print(fh.FileHandler().get_directory())
             process = self.config.get_current_process()
-            print()
             for _ in tqdm(range(1), desc=f"Processing: {process["name"]}"):     
                 param_list = self.config.get_parameters_list()
                 processed_rasters = self.process_parameters(param_list)
@@ -81,9 +82,9 @@ class ProcessingPipeline:
         # gdf = vo.list_raster_stats(param_list, raster_list, stats_list, thresholds)
         end_old = time.time()
         print(f"Old vectorization took {end_old - start_old:.2f} seconds")
-        colormap = self.config.get_colormap()
-        if colormap:    
-            gdf = self.assign_color(gdf, colormap=colormap)
+        color = self.config.get_color()
+        if color:    
+            gdf = self.assign_color(gdf, color=color)
 
         # mars_gcs = {
         #     "proj": "longlat",
@@ -100,10 +101,28 @@ class ProcessingPipeline:
         if driver == "pandas":
             return projected_gdf
         
-        output_dict = self.config.get_output_path()
-        filename = self.config.get_output_filename()
-        vo.save_shapefile(projected_gdf, output_dict, filename, driver=driver)
+        self.save_gdf(projected_gdf, driver)
         return None
+
+    def save_gdf(self, gdf, driver):
+        """
+        Save the GeoDataFrame to a file.
+        """
+        stack = self.config.get_stack()
+        output_dict = self.config.get_output_path()
+        name = self.config.get_current_process()["name"]
+        if stack is False:
+            thresholds = gdf['Threshold'].unique()
+            if len(thresholds) > 1:
+                new_output_dict = os.path.join(output_dict, str(name))
+                os.makedirs(new_output_dict, exist_ok=True)
+                for threshold in thresholds:
+                    thresh_gdf = gdf[gdf['Threshold'] == threshold]
+                    filename = fh.FileHandler().create_output_filename(driver, name, threshold)
+                    vo.save_shapefile(thresh_gdf, new_output_dict, filename, driver=driver)
+                return None
+        filename = fh.FileHandler().create_output_filename(driver, name, "stack")
+        vo.save_shapefile(gdf, output_dict, filename, driver=driver)
 
     def process_parameters(self, param_list):
         """
@@ -202,8 +221,8 @@ class ProcessingPipeline:
                 raise TypeError(f"Expected Parameter object, got {type(param)}")
             
             # Apply median filter
-            median_iterations = self.config.get_median_config().get("iterations", 0)
-            median_size = self.config.get_median_config().get("size", 3)
+            median_iterations = param.get_median_config().get("iterations", 1)
+            median_size = param.get_median_config().get("size", 3)
 
             # preprocessing = param.median_filter(iterations=median_iterations, size=median_size)
             # utils.show_raster(preprocessing, title="median_filter")
@@ -271,7 +290,7 @@ class ProcessingPipeline:
         
         return thresholds
 
-    def assign_color(self, gdf, colormap="viridis"):
+    def assign_color(self, gdf, color="viridis"):
         """
         Assign colors to the geometries in the GeoDataFrame based on the thresholds.
 
@@ -282,13 +301,63 @@ class ProcessingPipeline:
         Returns:
             GeoDataFrame: The input GeoDataFrame with an added 'color' column.
         """
-
+        c = {'red': [255,0,0], 'orange': [255,128,0], 'yellow': [255,255,0],
+            'lime': [128,255,0], 'green': [0,255,0], 'sea': [0,255,128],
+            'cyan': [0,255,255], 'sky': [0,128,255], 'blue': [0,0,255],
+            'violet': [128,0,255], 'magenta': [255,0,255], 'pink': [255,0,128]}
+        
         thresholds = gdf['Threshold'].unique()
-        cmap = plt.get_cmap(colormap, len(thresholds))
-        color_map = {val: mcolors.to_hex(cmap(i)) for i, val in enumerate(sorted(thresholds))}
+        
+        if color in c:
+            end_color = c[color]
+            # Use a linear color ramp from white to the selected color, mapped by threshold value
+            thresholds_sorted = sorted(thresholds)
+            color_map = self.make_ramp(end_color, len(thresholds_sorted))
+            threshold_to_color = {val: color_map[i][0] for i, val in enumerate(thresholds_sorted)}
+            gdf['hex_color'] = gdf['Threshold'].map(threshold_to_color)
 
-        gdf['hex_color'] = gdf['Threshold'].map(color_map)
+        elif color in plt.colormaps():
+            cmap = plt.get_cmap(color, len(thresholds))
+            color_map = {val: mcolors.to_hex(cmap(i)) for i, val in enumerate(sorted(thresholds))}
+            gdf['hex_color'] = gdf['Threshold'].map(color_map)
+        
+        else:
+            raise ValueError(f"Color '{color}' is not recognized. Use a valid matplotlib colormap name or a predefined color.")
+
         return gdf
+
+    @staticmethod
+    def make_ramp(end_color, num_thresh):
+        r, g, b = end_color
+        rs, gs, bs = (
+            np.linspace(0, r, num_thresh+1),
+            np.linspace(0, g, num_thresh+1),
+            np.linspace(0, b, num_thresh+1))
+        return [[ProcessingPipeline.rgb_to_hex(int(rs[i]), int(gs[i]), int(bs[i]))] for i in range(num_thresh+1)]
+
+    @staticmethod
+    def rgb_to_hex(r, g, b):
+        """
+        Converts RGB color values (0-255) to a hexadecimal color code.
+
+        Args:
+            r (int): Red component (0-255).
+            g (int): Green component (0-255).
+            b (int): Blue component (0-255).
+
+        Returns:
+            str: The hexadecimal color code in the format '#RRGGBB'.
+        """
+        return '#{:02x}{:02x}{:02x}'.format(r, g, b)
+    
+    def get_bool_masks(self, param_list):
+        """ Get a list of parameters that will be cut after processing."""
+        bool_masks = []
+        for param in param_list:
+            if isinstance(param, pm.Mask) and param.bool_mask:
+                bool_masks.append(param)
+                param_list.remove(param)
+        return bool_masks
     
     def assign_spatial_info(self, dataset):
         """

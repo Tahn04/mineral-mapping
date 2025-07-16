@@ -9,7 +9,7 @@ def main():
     """From a config file"""
     config_path = r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\config\custom_config.yaml"
 
-    gdf = vp.Vectroscopy.from_config(config_path, process="D2300").vectorize() 
+    gdf = vp.Vectroscopy.from_config(config_path, process="TESTING_INDIC").vectorize() 
     
 
     """From an array"""

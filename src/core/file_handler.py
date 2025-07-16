@@ -33,6 +33,22 @@ class FileHandler:
         """
         file_path = os.path.join(self.temp_dir, f"{prefix}_temp.{suffix}")
         return file_path
+
+    def create_output_filename(self, driver, name, text):
+        """Get the output filename for the current process."""
+        if driver == 'pandas':
+            return None
+        extension_map = {
+            'GeoJSON': 'geojson',
+            'ESRI Shapefile': 'shp',
+            'GPKG': 'gpkg'
+        }
+        file_extension = extension_map.get(driver)
+        if not file_extension:
+            raise ValueError(f"Unknown driver: {driver}")
+        # Simple sanitization: replace spaces with underscores
+        safe_name = name.replace(" ", "_")
+        return f"{safe_name}_{text}.{file_extension}"
     
     def get_directory(self):
         """

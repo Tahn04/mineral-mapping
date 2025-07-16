@@ -17,6 +17,9 @@ class Parameter:
         self.transform = None
         self.raster = self.init_raster(raster_path, array, crs, transform)
         self.thresholds = self.config_thresholds(thresholds)
+        self.operator = None
+        self.pipeline = None
+        self.median_config = None
 
     def init_raster(self, raster_path=None, array=None, crs=None, transform=None):
         """Initialize the raster data from a file or an array."""
@@ -87,6 +90,12 @@ class Parameter:
         """Return the path to the median filtered raster."""
         return self.median_filtered_path
 
+    def get_median_config(self):
+        """Return the median filter configuration."""
+        if self.median_config:
+            return self.median_config
+        return {"size": 0, "iterations": 0}
+
     def set_thresholds(self, thresholds):
         """Set the thresholds for the parameter."""
         if isinstance(thresholds, list):
@@ -107,3 +116,9 @@ class Parameter:
         self.raster = None
         self.dataset = None
         self.mask = None
+
+class Mask(Parameter):
+    def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, thresholds=None):
+        super().__init__(name, raster_path, array, crs, transform, thresholds)
+        self.mask = True
+        self.bool_mask = False

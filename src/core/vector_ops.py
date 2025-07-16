@@ -485,7 +485,7 @@ def config_stats(stats_list, param_name):
             if len(stat) < 2 or not stat[:-1].isdigit():
                 raise ValueError(f"Invalid percentile format: {stat}. Must be a number followed by 'p'.")
             p = float(stat[:-1])
-            stat_config.append(f"Q=quantile(q={p/100})")
+            stat_config.append(f"{param_name}=quantile(q={p/100})")
         elif stat in stats_map:
             stat_config.append(stats_map[stat])
         else:

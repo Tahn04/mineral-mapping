@@ -102,7 +102,7 @@ def dask_majority_filter(binary_array, size=3, iterations=1, chunk_size=(1024, 1
             majority_filter_kernel,
             size=size,
             depth=size // 2,
-            boundary='reflect',  # Use reflect instead of nan for binary data
+            boundary='reflect',
             dtype=np.uint8
         )
     

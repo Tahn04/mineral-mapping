@@ -23,9 +23,9 @@ class Config:
         self.process = process or "default" 
         self.params = []
         self.load_config()
-        self.output_filename = self.create_output_filename()
-        gdal.UseExceptions()
-        print(fh.FileHandler().get_directory())
+        # self.output_filename = self.create_output_filename()
+        # gdal.UseExceptions()
+        # print(fh.FileHandler().get_directory())
         self.config_ram(ram_pct=0.4, verbose=True)
 
     def config_ram(self, ram_pct, verbose):
@@ -41,7 +41,7 @@ class Config:
         """
         if not (0 < ram_pct <= 1):
             raise ValueError("ram_pct must be between 0 and 1")
-
+        gdal.UseExceptions()
         # Get system memory
         total_ram_bytes = psutil.virtual_memory().total
         cache_max_bytes = int((total_ram_bytes * ram_pct))
@@ -186,8 +186,8 @@ class Config:
             process (str): Name of the process to set as current.
         """
         
-        param_file_dicts = self.get_nested('processes', self.process, 'thresholds', 'parameters', default={})
-        mask_file_dicts = self.get_nested('processes', self.process, 'thresholds', 'masks', default={})
+        param_file_dicts = self.get_nested('processes', self.process, 'parameters', default={})
+        mask_file_dicts = self.get_nested('processes', self.process, 'masks', default={})
         
         self.init_parameters(param_file_dicts, mask_file_dicts)
 
@@ -205,15 +205,51 @@ class Config:
         # mask_file_dicts = self.get_file_paths(self.get_mask_names())
 
         param_list = []
-        for param_name, parameters in param_file_dicts.items():
-            param = pm.Parameter(name=param_name, raster_path=parameters[0], thresholds=parameters[1] if len(parameters) > 1 else None)
-            param_list.append(param)
+        # for param_name, parameters in param_file_dicts.items():
+        #     param = pm.Parameter(name=param_name, raster_path=parameters[0], thresholds=parameters[1] if len(parameters) > 1 else None)
+        #     param_list.append(param)
         
-        if mask_file_dicts is not None:
-            for mask_name, parameters in mask_file_dicts.items():
-                mask_param = pm.Parameter(mask_name, raster_path=parameters[0], thresholds=parameters[1] if len(parameters) > 1 else None)
-                mask_param.mask = True
-                param_list.append(mask_param)
+        # if mask_file_dicts is not None:
+        #     for mask_name, parameters in mask_file_dicts.items():
+        #         mask_param = pm.Parameter(mask_name, raster_path=parameters[0], thresholds=parameters[1] if len(parameters) > 1 else None)
+        #         mask_param.mask = True
+        #         param_list.append(mask_param)
+        for param_name, parameters in param_file_dicts.items():
+            param_path = parameters.get('path', None)
+            param_thresholds = parameters.get('thresholds', None)
+            param_operator = parameters.get('operator', ">")
+            median_config = parameters.get('median', {})
+            # param_pipeline = parameters.get('pipeline', "Default")
+
+            param = pm.Parameter(name=param_name, raster_path=param_path, thresholds=param_thresholds)
+            
+            param.operator = param_operator
+            param.median_config = median_config
+            # if param_pipeline == "Default":
+            #     param.pipeline = self.get_pipeline()
+            # else:
+            #     param.pipeline = param_pipeline
+
+            param_list.append(param)
+
+        # if mask_file_dicts is not None:
+        for mask_name, parameters in mask_file_dicts.items() if mask_file_dicts else {}.items():
+            mask_path = parameters.get('path', None)
+            mask_thresholds = parameters.get('thresholds', None)
+            mask_operator = parameters.get('operator', ">")
+            mask_median = parameters.get('median', {})
+            mask_bool_mask = parameters.get('bool_mask', False)
+            # mask_pipeline = parameters.get('pipeline', "Default")
+
+            mask_param = pm.Mask(name=mask_name, raster_path=mask_path, thresholds=mask_thresholds)
+            
+            mask_param.operator = mask_operator
+            mask_param.median = mask_median
+            # if mask_pipeline == "Default":
+            #     mask_param.pipeline = self.get_pipeline()
+            mask_param.bool_mask = mask_bool_mask
+
+            param_list.append(mask_param)
         
         self.params = param_list
 
@@ -390,10 +426,10 @@ class Config:
         else:
             return cs
 
-    def get_colormap(self):
-        """Get the color map for the current process."""
+    def get_color(self):
+        """Get the color for the current process."""
         process = self.get_current_process()
-        return process['vectorization'].get('colormap', None)
+        return process['vectorization'].get('color', None)
 
     def get_stats(self):
         """Get the statistics configuration for the current process."""
@@ -421,6 +457,11 @@ class Config:
         process = self.get_current_process()
         simplify = process['vectorization'].get('simplify', 0)
         return simplify
+    
+    def get_stack(self):
+        """Check if the current process is set to stack results."""
+        process = self.get_current_process()
+        return process['vectorization'].get('stack', True)
     
     # Setters
     def set_current_process(self, process_name):
