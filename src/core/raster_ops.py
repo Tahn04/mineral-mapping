@@ -1,6 +1,7 @@
 import json
 import os
 
+from affine import Affine
 import numpy as np
 import bottleneck as bn
 import numpy as np
@@ -19,25 +20,61 @@ import rasterio as rio
 from scipy.ndimage import binary_opening
 from skimage.morphology import square
 from scipy import ndimage
+import xarray as xr
+from rasterio.features import sieve
+import tifffile
 
 #===========================================#
 # Processing Functions
 #===========================================#
 
 """Median Filter"""
-def dask_nanmedian_filter(arr, window_size=3, iterations=1):
-    dask_arr = da.from_array(arr, chunks=(1024, 1024))  # Adjust chunk size as needed
+def dask_nanmedian_filter(data, window_size=3, iterations=1):
+    """
+    Apply nanmedian filter to either numpy array or Xarray DataArray.
+    Returns lazy Dask-backed DataArray if input is Xarray, otherwise numpy array.
+    """
+    # Handle both numpy arrays and Xarray DataArrays
+    if isinstance(data, xr.DataArray):
+        # Work with the underlying Dask array (or convert to Dask if numpy-backed)
+        if data.chunks is None:
+            # If not chunked, create chunks
+            dask_arr = da.from_array(data.values, chunks=(1024, 1024))
+        else:
+            # Already chunked
+            dask_arr = data.data
+        
+        # Apply the filter iterations
+        for _ in tqdm(range(iterations), desc="Applying Xarray nanmedian filter"):
+            dask_arr = dask_arr.map_overlap(
+                nanmedian_2d,
+                window_size=window_size,
+                depth=window_size // 2,
+                boundary=np.nan,
+                dtype=dask_arr.dtype
+            )
 
-    for _ in tqdm(range(iterations), desc="Applying Dask nanmedian filter"):
-        dask_arr = dask_arr.map_overlap(
-            nanmedian_2d,
-            window_size=window_size,
-            depth=window_size // 2,
-            boundary=np.nan,
-            dtype=arr.dtype
+        # Return as lazy Xarray DataArray
+        return xr.DataArray(
+            dask_arr,  # Keep as Dask array (lazy)
+            coords=data.coords,
+            dims=data.dims,
+            attrs=data.attrs
         )
-
-    return dask_arr.compute()
+    else:
+        # Original behavior for numpy arrays
+        dask_arr = da.from_array(data, chunks=(1024, 1024))
+        
+        for _ in tqdm(range(iterations), desc="Applying Dask nanmedian filter"):
+            dask_arr = dask_arr.map_overlap(
+                nanmedian_2d,
+                window_size=window_size,
+                depth=window_size // 2,
+                boundary=np.nan,
+                dtype=data.dtype
+            )
+        
+        return dask_arr.compute()
 
 def nanmedian_2d(x, window_size):
     """Apply 2D nanmedian filter to a NumPy array with given window size."""
@@ -53,17 +90,92 @@ def nanmedian_2d(x, window_size):
 """Thresholds"""
 def full_threshold(raster, thresholds):
     """Apply multiple thresholds to a raster and return a list of binary arrays."""
-    results = []
-    for t in tqdm(thresholds, desc="Applying thresholds"):
-        result = threshold(raster, t)
-        results.append(result)
-        
-    return results
+    if isinstance(raster, xr.DataArray):
+        return xarray_full_threshold_concat(raster, thresholds)
+    else:
+        results = []
+        for t in tqdm(thresholds, desc="Applying thresholds"):
+            result = threshold(raster, t)
+            results.append(result)
+            
+        return results
 
 def threshold(raster, threshold):
     raster = np.asarray(raster)
     return (raster > threshold).astype(raster.dtype)
 
+def xarray_full_threshold_concat(xr_data, thresholds):
+    """
+    Apply multiple thresholds and return as a single DataArray with threshold dimension.
+    """
+    results = []
+    for t in tqdm(thresholds, desc="Applying thresholds"):
+        binary_result = (xr_data > t).astype(xr_data.dtype)
+        results.append(binary_result)
+    
+    # Concatenate along a new 'threshold' dimension
+    return xr.concat(results, dim='threshold').assign_coords(threshold=thresholds)
+
+"""Combine Rasters"""
+def combine_thresholded_rasters_detailed(masks_thresholded=None, param_thresholded=None):
+    """
+    More detailed version with explicit handling of dimensions and metadata.
+    """
+    masks_thresholded = masks_thresholded or []
+    param_thresholded = param_thresholded or []
+    
+    if len(masks_thresholded) > 0 or len(param_thresholded) > 1:
+        # Get threshold coordinates from first available array
+        if param_thresholded:
+            threshold_coords = param_thresholded[0].coords['threshold']
+            template = param_thresholded[0]
+        else:
+            threshold_coords = masks_thresholded[0].coords['threshold']
+            template = masks_thresholded[0]
+        
+        # Process masks (subtractive)
+        if len(masks_thresholded) > 0:
+            # Combine all masks using logical OR
+            combined_mask_raw = masks_thresholded[0].copy() 
+            for mask in masks_thresholded[1:]: # should make sure they are 2D
+                combined_mask_raw =  xr.ufuncs.logical_or(combined_mask_raw, mask[0])
+            
+            # Invert mask (areas to keep)
+            combined_mask = xr.ufuncs.logical_not(combined_mask_raw)
+        else:
+            # No masks - create all-ones mask
+            combined_mask = xr.ones_like(template, dtype='uint32') # ???
+        
+        # Process parameters (multiplicative)
+        if len(param_thresholded) > 1:
+            param_thresholded = assign_thresholds_to_params(param_thresholded)
+            combined_params = param_thresholded[0].copy()
+            for param in param_thresholded[1:]:
+                combined_params = combined_params * param
+        else:
+            combined_params = param_thresholded[0]
+        
+        # Apply mask
+        result = combined_params * combined_mask[0]
+        
+        # Update metadata
+        result.attrs['operation'] = 'combined_thresholded_rasters'
+        result.attrs['num_masks'] = len(masks_thresholded)
+        result.attrs['num_params'] = len(param_thresholded)
+        
+        return result
+    
+    return None
+
+def assign_thresholds_to_params(param_thresholded):
+    num_thresholds = len(param_thresholded[0].threshold)
+    if num_thresholds > 0:
+        threshold_list = list(range(1, num_thresholds + 1))
+        new_param_thresholded = []
+        for param in param_thresholded:
+            param = param.assign_coords(threshold=threshold_list)
+            new_param_thresholded.append(param)
+    return new_param_thresholded
 
 """Majority Filter"""
 def list_majority_filter(raster_list, iterations=1, size=3):
@@ -179,6 +291,39 @@ def list_sieve_filter(array_list, crs, transform, iterations=1, threshold=9, con
 
     return filtered_array
 
+def list_sieve_filter_rio(array_list, crs, transform, iterations=1, threshold=9, connectedness=4):
+    """
+    Apply sieve filter to a list of arrays using rasterio.
+    
+    Parameters:
+    - array_list: List of 2D numpy arrays to filter
+    - crs: Coordinate reference system (not used by rasterio sieve but kept for compatibility)
+    - transform: Affine transform (not used by rasterio sieve but kept for compatibility) 
+    - iterations: Number of sieve iterations to apply
+    - threshold: Minimum number of connected pixels to keep
+    - connectedness: Pixel connectivity (4 or 8)
+    
+    Returns:
+    - List of filtered arrays
+    """
+    filtered_array = []
+
+    for array in tqdm(array_list, desc="Applying Sieve Filter"):
+        # Convert to uint8 and handle NaN values
+        array_uint8 = np.nan_to_num(array, nan=0).astype("uint8")
+        
+        # Apply sieve filter for specified iterations
+        filtered = array_uint8.copy()
+        for _ in range(iterations):
+            filtered = sieve(
+                source=filtered,
+                size=threshold,
+                connectivity=connectedness
+            )
+            filtered_array.append(filtered)
+
+    return filtered_array
+
 """Binary Opening"""
 def list_binary_opening(raster_list, iterations, size):
     """
@@ -216,6 +361,16 @@ def _binary_opening(raster, iterations, size):
 #===========================================#
 # Other
 #===========================================#
+
+def xarray_to_array(xr_data):
+    """Convert an Xarray DataArray to a NumPy array."""
+    if isinstance(xr_data, xr.DataArray):
+        return [np.asarray(xr_data.sel(threshold=t).values) for t in xr_data.coords['threshold'].values]
+
+def array_to_xarray(array_list):
+    """Convert a list of NumPy arrays to an Xarray DataArray."""
+    if all(isinstance(arr, np.ndarray) for arr in array_list):
+        return xr.DataArray(data=array_list)
 
 def label_clusters(binary_raster, connectivity=1):
     """
@@ -311,3 +466,29 @@ def save_raster_gdal(array, crs, transform, output_path):
     dataset.FlushCache()
     
     return output_path
+
+def save_raster_fast_rasterio(array, crs, transform, filepath):
+    """Save with rasterio using fast settings"""
+    if transform is not None and not isinstance(transform, Affine):
+        transform = Affine(transform[1], transform[2], transform[0],
+                         transform[4], transform[5], transform[3])
+    with rio.open(
+        filepath,
+        'w',
+        driver='GTiff',
+        height=array.shape[0],
+        width=array.shape[1],
+        count=1,  # Number of bands
+        dtype=array.dtype,  # Data type
+        crs=crs,
+        transform=transform,
+        # compress='lzw',  # Fast compression
+        tiled=True
+    ) as dst:
+        dst.write(array, 1)
+
+def save_raster_np_array(array, crs, transform, output_path):
+    """
+    Save a raster array to a file using numpy.
+    """
+    np.savez_compressed(output_path, array=array, crs=crs, transform=transform)

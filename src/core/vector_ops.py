@@ -1,4 +1,5 @@
 import os
+import time
 import geopandas as gpd
 import numpy as np
 from affine import Affine
@@ -160,7 +161,7 @@ def file_zonal_stats(path_list, param, crs, transform, stats_config, pixel_area,
         #         base_raster = param.raster_path
         # else:
         #     base_raster = array_to_gdal(param.raster, transform, crs)
-        base_raster = param.get_median_filtered_path()
+        base_raster = param.preprocessed_path
         # param.release()
 
     with gdal.Open(base_raster) as rast:
@@ -220,12 +221,20 @@ def file_zonal_stats(path_list, param, crs, transform, stats_config, pixel_area,
 
                     float_cols = temp.select_dtypes(include=['float']).columns
                     temp[float_cols] = temp[float_cols].round(5) 
+                    temp = percintile_rename(temp)
 
                     gdf = pd.concat([gdf, temp], ignore_index=True)
             else:
                 temp = gpd.read_file(path)
                 gdf = pd.concat([gdf, temp], ignore_index=True)
 
+    return gdf
+
+def percintile_rename(gdf):
+    """ Rename percentile columns in a GeoDataFrame."""
+    for col in gdf.columns:
+        if isinstance(col, str) and col and col[-1].isdigit():
+            gdf = gdf.rename(columns={col: f"{col}P"})
     return gdf
 
 def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol):
@@ -242,13 +251,53 @@ def list_vectorize(raster_list, thresholds, crs, transform, simplify_tol):
     Returns:
     - List of GeoDataFrames
     """
-    results = [
-        # vectorize(raster, threshold, transform, crs, simplify_tol=simplify_tol)
-        dask_vectorize(raster, transform, crs, threshold=threshold, simplify_tol=simplify_tol)
-        for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Vectorizing", total=len(raster_list))
-    ]
-    results = combine_polygons(results)
-    return results
+    # results = [
+    #     # vectorize(raster, threshold, transform, crs, simplify_tol=simplify_tol)
+    #     dask_vectorize(raster, transform=transform, crs=crs, threshold=threshold, simplify_tol=simplify_tol)
+    #     for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Vectorizing", total=len(raster_list))
+    # ]
+    # results = combine_polygons(results)
+    # return results
+    gdf = gpd.GeoDataFrame()
+    for raster, threshold in tqdm(zip(raster_list, thresholds), desc="Vectorizing", total=len(raster_list)):
+        gdf = pd.concat([gdf, vectorize_raster(raster, transform=transform, crs=crs, threshold=threshold, simplify_tol=simplify_tol)], ignore_index=True)
+
+    return gdf
+
+def vectorize_raster(raster, crs=None, transform=None, threshold=None, simplify_tol=0):
+    """
+    Convert a binary raster (numpy array or xarray.DataArray) to a GeoDataFrame with geometries.
+    """
+    # Convert xarray.DataArray to numpy array if needed
+    if hasattr(raster, "values"):
+        arr = raster.values
+    else:
+        arr = raster
+
+    arr = arr.astype("uint8")
+    # Ensure transform is an Affine object
+    if transform is not None and not isinstance(transform, Affine):
+        transform = Affine(transform[1], transform[2], transform[0],
+                         transform[4], transform[5], transform[3])
+    elif transform is None:
+        raise ValueError("Transform must be provided.")
+
+    results = shapes(arr, mask=arr.astype(bool), transform=transform)
+    geoms = []
+    vals = []
+    for geom, val in results:
+        if val != 0:
+            poly = shape(geom)
+            if simplify_tol:
+                poly = poly.simplify(simplify_tol, preserve_topology=True)
+            geoms.append(poly)
+            vals.append(val)
+
+    gdf = gpd.GeoDataFrame(
+        {"value": vals, "Threshold": threshold, "geometry": geoms},
+        crs=crs
+    )
+    return gdf
 
 def vectorize_chunk(chunk, transform, value=1, simplify_tol=0, threshold=None):
     """
@@ -408,14 +457,14 @@ def list_zonal_stats(polygons, param_list, crs, transform, stats_list):
     x_res = transform[1]
     y_res = abs(transform[5])  # y res is negative for north-up images
     pixel_area = x_res * y_res
-    gdf = combine_polygons(polygons[1:])
+    # gdf = combine_polygons(polygons[1:])
     # gdf = polygons[0:2]
     results = gpd.GeoDataFrame()
     for param in param_list:
         stats_config = config_stats(stats_list, param.name)  # Get the configured stats for the parameter
         
         # raster_path = get_tiled_raster_path(param)
-        temp = zonal_stats(gdf, param.raster, param.dataset, pixel_area, crs, transform, param.name, stats_config, param)
+        temp = zonal_stats(polygons, param, pixel_area, crs, transform, param.name, stats_config)
         # temp = tiled_zonal_stats(gdf, raster_path, stats_config, tile_size=2048, overlap=100, temp_dir=None, cleanup=True, strategy="raster-sequential")
         if results.empty:
             results = temp
@@ -426,7 +475,7 @@ def list_zonal_stats(polygons, param_list, crs, transform, stats_list):
                 # results = results.drop(columns=[f"value_{param.name}"])
     return results
 
-def zonal_stats(gdf, data_raster, dataset, pixel_area, crs, transform, param_name, stats_config, param):
+def zonal_stats(gdf, param, pixel_area, crs, transform, param_name, stats_config):
     """ Calculate zonal statistics for a raster and vector layers."""
     if len(stats_config) != 0:
         empty_gdf = gpd.GeoDataFrame()
@@ -434,12 +483,22 @@ def zonal_stats(gdf, data_raster, dataset, pixel_area, crs, transform, param_nam
         #     base_raster = dataset
         # else:
         #     base_raster = array_to_gdal(data_raster, transform, crs)
-        base_raster = array_to_gdal(data_raster, transform, crs)
-        raster_path = get_tiled_raster_path(param)
-        param.release()  # Release the raster dataset to avoid memory issues
+        # base_raster = array_to_gdal(data_raster, transform, crs)
+        # raster_path = param.raster_path
+        # param.release()  # Release the raster dataset to avoid memory issues
         # temp = rioxarray_zonal_stats(gdf, raster_path, stat="median")
+        # raster = param.raster.data.compute()
+        # ro.show_raster(raster, title=f"{param_name} Raster")
+        start = time.time()
+        raster_path = param.preprocessed_path
+        np_array = raster_path.data.compute()
+        rio_instance = array_to_rasterio(np_array, param.get_transform(), param.get_crs())
+        # xrds = param.preprocessed_path.load()
+        finish = time.time()
+        print(f"Time taken to convert array to rasterio: {finish - start} seconds")
+        
         temp = exact_extract(
-            raster_path,
+            rio_instance,
             gdf,
             stats_config,
             include_geom=True,
@@ -447,7 +506,7 @@ def zonal_stats(gdf, data_raster, dataset, pixel_area, crs, transform, param_nam
             # strategy="raster-sequential",
             output='pandas',
             progress=True,
-            max_cells_in_memory=1000000000 # Adjust as needed for large datasets
+            max_cells_in_memory=1000000000  # Adjust as needed for large datasets
         )
         # temp_dir = os.path.dirname(raster_path)
         # shutil.rmtree(temp_dir)

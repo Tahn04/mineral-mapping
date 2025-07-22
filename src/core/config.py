@@ -6,6 +6,7 @@ import core.file_handler as fh
 import re
 from osgeo import osr, gdal
 import psutil
+from tqdm import tqdm
 
 class Config:
     """
@@ -26,34 +27,34 @@ class Config:
         # self.output_filename = self.create_output_filename()
         # gdal.UseExceptions()
         # print(fh.FileHandler().get_directory())
-        self.config_ram(ram_pct=0.4, verbose=True)
+        # self.config_ram(ram_pct=0.4, verbose=True)
 
-    def config_ram(self, ram_pct, verbose):
-        """
-        Configure GDAL's cache size based on system memory.
+    # def config_ram(self, ram_pct, verbose):
+    #     """
+    #     Configure GDAL's cache size based on system memory.
 
-        Parameters:
-        - ram_pct (float): Fraction (0-1) of total RAM to allocate to GDAL cache.
-        - verbose (bool): Whether to print the configured values.
+    #     Parameters:
+    #     - ram_pct (float): Fraction (0-1) of total RAM to allocate to GDAL cache.
+    #     - verbose (bool): Whether to print the configured values.
 
-        Returns:
-        - int: Cache size in MB actually set
-        """
-        if not (0 < ram_pct <= 1):
-            raise ValueError("ram_pct must be between 0 and 1")
-        gdal.UseExceptions()
-        # Get system memory
-        total_ram_bytes = psutil.virtual_memory().total
-        cache_max_bytes = int((total_ram_bytes * ram_pct))
+    #     Returns:
+    #     - int: Cache size in MB actually set
+    #     """
+    #     if not (0 < ram_pct <= 1):
+    #         raise ValueError("ram_pct must be between 0 and 1")
+    #     gdal.UseExceptions()
+    #     # Get system memory
+    #     total_ram_bytes = psutil.virtual_memory().total
+    #     cache_max_bytes = int((total_ram_bytes * ram_pct))
 
-        # Set GDAL cache size
-        gdal.SetCacheMax(cache_max_bytes)
-        gdal.SetConfigOption("GDAL_CACHEMAX", str(cache_max_bytes))  # affects external tools too
+    #     # Set GDAL cache size
+    #     gdal.SetCacheMax(cache_max_bytes)
+    #     gdal.SetConfigOption("GDAL_CACHEMAX", str(cache_max_bytes))  # affects external tools too
 
-        if verbose:
-            print(f"[GDAL] Cache max set to {cache_max_bytes} MB ({ram_pct * 100:.0f}% of total RAM)")
+    #     if verbose:
+    #         print(f"[GDAL] Cache max set to {cache_max_bytes} MB ({ram_pct * 100:.0f}% of total RAM)")
 
-        return cache_max_bytes
+    #     return cache_max_bytes
 
     def get_parameters_list(self):
         """
@@ -214,7 +215,7 @@ class Config:
         #         mask_param = pm.Parameter(mask_name, raster_path=parameters[0], thresholds=parameters[1] if len(parameters) > 1 else None)
         #         mask_param.mask = True
         #         param_list.append(mask_param)
-        for param_name, parameters in param_file_dicts.items():
+        for param_name, parameters in tqdm(param_file_dicts.items(), desc="Initializing parameters"):
             param_path = parameters.get('path', None)
             param_thresholds = parameters.get('thresholds', None)
             param_operator = parameters.get('operator', ">")
@@ -233,12 +234,12 @@ class Config:
             param_list.append(param)
 
         # if mask_file_dicts is not None:
-        for mask_name, parameters in mask_file_dicts.items() if mask_file_dicts else {}.items():
+        for mask_name, parameters in tqdm(mask_file_dicts.items() if mask_file_dicts else {}, desc="Initializing masks"):
             mask_path = parameters.get('path', None)
             mask_thresholds = parameters.get('thresholds', None)
             mask_operator = parameters.get('operator', ">")
             mask_median = parameters.get('median', {})
-            mask_bool_mask = parameters.get('bool_mask', False)
+            mask_keep_shape = parameters.get('keep_shape', False)
             # mask_pipeline = parameters.get('pipeline', "Default")
 
             mask_param = pm.Mask(name=mask_name, raster_path=mask_path, thresholds=mask_thresholds)
@@ -247,7 +248,7 @@ class Config:
             mask_param.median = mask_median
             # if mask_pipeline == "Default":
             #     mask_param.pipeline = self.get_pipeline()
-            mask_param.bool_mask = mask_bool_mask
+            mask_param.keep_shape = mask_keep_shape
 
             param_list.append(mask_param)
         

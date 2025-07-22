@@ -1,3 +1,4 @@
+from affine import Affine
 import core.config as cfg
 import core.raster_ops as ro
 import core.vector_ops as vo
@@ -5,12 +6,14 @@ import core.file_handler as fh
 import numpy as np
 from tqdm import tqdm
 from osgeo import gdal, ogr, osr
+import rioxarray as rxr
+import xarray as xr
 
 class Parameter:
     def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, thresholds=None):
         self.name = name
         self.raster_path = raster_path
-        self.median_filtered_path = None
+        self.preprocessed_path = None
         self.mask = False
         self.dataset = None
         self.crs = None
@@ -24,15 +27,30 @@ class Parameter:
     def init_raster(self, raster_path=None, array=None, crs=None, transform=None):
         """Initialize the raster data from a file or an array."""
         if raster_path:
-            dataset = gdal.Open(raster_path)
-            band = dataset.GetRasterBand(1)
-            band_array = band.ReadAsArray()
-            self.crs = dataset.GetProjection()
-            self.transform = dataset.GetGeoTransform()
-            if band.GetNoDataValue() is not None:
-                nodata = band.GetNoDataValue()
-                band_array[band_array == nodata] = np.nan
-            self.dataset = dataset
+            # dataset = gdal.Open(raster_path)
+            # band = dataset.GetRasterBand(1)
+            # band_array = band.ReadAsArray()
+            # self.crs = dataset.GetProjection()
+            # self.transform = dataset.GetGeoTransform()
+            # if band.GetNoDataValue() is not None:
+            #     nodata = band.GetNoDataValue()
+            #     band_array[band_array == nodata] = np.nan
+            # self.dataset = dataset
+            band_array = rxr.open_rasterio(raster_path, masked=True, chunks="auto")
+            band_array = Parameter.preprocess_raster(band_array)
+            self.crs = band_array.spatial_ref.crs_wkt
+            self.transform = band_array.spatial_ref.GeoTransform 
+            # Ensure transform is a tuple/list of length 6
+            if isinstance(self.transform, str):
+                # Split string and convert to float
+                transform_vals = [float(val) for val in self.transform.split()]
+                if len(transform_vals) != 6:
+                    raise ValueError("Transform string must have 6 values.")
+                transform = Affine(transform_vals[1], transform_vals[2], transform_vals[0],
+                         transform_vals[4], transform_vals[5], transform_vals[3])
+                self.transform = transform
+            else:
+                raise ValueError("Transform must be a sequence of length 6 or a string with 6 space-separated values.")
             return band_array
 
         elif array is not None:
@@ -51,6 +69,13 @@ class Parameter:
 
         else:
             raise ValueError("Either raster_path or array with crs and transfrom must be provided.")
+    @staticmethod
+    def preprocess_raster(rxds):
+        """Preprocess the raster data by replacing no data values with NaN."""
+        nodata = rxds.rio.nodata
+        if nodata:
+            rxds = rxds.where(rxds != nodata, np.nan)
+        return rxds.squeeze()
 
     def median_filter(self, size=3, iterations=1):
         """Apply a median filter to the raster data."""
@@ -85,10 +110,6 @@ class Parameter:
         if self.raster is None:
             raise ValueError("Raster data is not initialized.")
         return self.raster
-    
-    def get_median_filtered_path(self):
-        """Return the path to the median filtered raster."""
-        return self.median_filtered_path
 
     def get_median_config(self):
         """Return the median filter configuration."""
@@ -121,4 +142,4 @@ class Mask(Parameter):
     def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, thresholds=None):
         super().__init__(name, raster_path, array, crs, transform, thresholds)
         self.mask = True
-        self.bool_mask = False
+        self.keep_shape = False

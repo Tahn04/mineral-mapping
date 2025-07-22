@@ -7,9 +7,9 @@ from osgeo import gdal, ogr, osr
 def main():
     
     """From a config file"""
-    config_path = r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\config\custom_config.yaml"
+    config_path = r"\\lasp-store\home\taja6898\Documents\Code\vectroscopy\config\custom_config.yaml"
 
-    gdf = vp.Vectroscopy.from_config(config_path, process="TESTING_INDIC").vectorize() 
+    gdf = vp.Vectroscopy.from_config(config_path, process="D2300").vectorize() 
     
 
     """From an array"""
