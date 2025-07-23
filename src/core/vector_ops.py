@@ -490,15 +490,15 @@ def zonal_stats(gdf, param, pixel_area, crs, transform, param_name, stats_config
         # raster = param.raster.data.compute()
         # ro.show_raster(raster, title=f"{param_name} Raster")
         start = time.time()
-        raster_path = param.preprocessed_path
-        np_array = raster_path.data.compute()
-        rio_instance = array_to_rasterio(np_array, param.get_transform(), param.get_crs())
+        rast = param.preprocessed_path
+        # np_array = raster_path.data.compute()
+        
         # xrds = param.preprocessed_path.load()
         finish = time.time()
         print(f"Time taken to convert array to rasterio: {finish - start} seconds")
         
         temp = exact_extract(
-            rio_instance,
+            rast,
             gdf,
             stats_config,
             include_geom=True,

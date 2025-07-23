@@ -410,6 +410,29 @@ def get_raster_thresholds(raster, thresholds=['75p', '85p', '95p']):
     
     return temp_thresholds
 
+def get_raster_thresholds_sampled(raster, thresholds=['75p', '85p', '95p'], sample_size=1000000):
+    """
+    Calculate thresholds using random sampling for large rasters.
+    """
+    # Flatten and remove NaN values
+    valid_data = raster[~np.isnan(raster)]
+    
+    # Sample if data is larger than sample_size
+    if len(valid_data) > sample_size:
+        valid_data = np.random.choice(valid_data, size=sample_size, replace=False)
+    
+    temp_thresholds = []
+    for t in thresholds:
+        if isinstance(t, str) and t.endswith('p'):
+            p = float(t[:-1])
+            temp_thresholds.append(np.percentile(valid_data, p).round(4))
+        elif isinstance(t, (int, float)):
+            temp_thresholds.append(t)
+        else:
+            raise ValueError(f"Invalid threshold format: {t}")
+    
+    return temp_thresholds
+
 def show_raster(raster, cmap='gray', title=None):
     import matplotlib.pyplot as plt
 

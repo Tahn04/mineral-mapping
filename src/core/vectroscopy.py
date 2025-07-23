@@ -58,7 +58,7 @@ class Vectroscopy:
         self.config.add_parameter(array=array, crs=crs, transform=transform, name=name, thresholds=thresholds)
         return self
     
-    def add_mask(self, array=None, crs=None, transform=None, name=None, thresholds=None):
+    def add_mask(self, array=None, crs=None, transform=None, name=None, threshold=None):
         """
         Add a mask to the existing configuration.
 
@@ -72,7 +72,7 @@ class Vectroscopy:
         Returns:
             self: Returns self to enable method chaining
         """
-        self.config.add_mask(array=array, crs=crs, transform=transform, name=name, thresholds=thresholds)
+        self.config.add_mask(array=array, crs=crs, transform=transform, name=name, threshold=threshold)
         return self
 
     def config_output(self, stats, show_base, base_stats, driver, output_path):

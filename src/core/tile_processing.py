@@ -141,7 +141,7 @@ class ProcessingPipeline:
         raster_list = self.threshold(param_list)
         
         # test = raster_list[0].data.compute()
-        raster_list = ro.xarray_to_array(raster_list)
+        # raster_list = ro.xarray_to_array(raster_list)
         
         end_time = time.time()
         print(f"xarray_to_array execution time: {end_time - start_time:.2f} seconds")
@@ -176,8 +176,12 @@ class ProcessingPipeline:
         final_raster_list = []
         for raster in raster_list:
             if isinstance(raster, xr.DataArray):
-                arr = raster.data.compute()
-                final_raster_list.append(np.asarray(arr))
+                if hasattr(raster.data, 'compute'):
+                    # If the raster is an xarray DataArray, compute it
+                    array = raster.data.compute()
+                else:
+                    array = raster.data
+                final_raster_list.append(np.asarray(array))
         return final_raster_list
 
     @staticmethod
@@ -246,10 +250,10 @@ class ProcessingPipeline:
 
             preprocessed = param.median_filter(iterations=median_iterations, size=median_size)
             # preprocessed_array = preprocessed.data.compute() # this takes a while
-            preprocessed_path = fh.FileHandler().create_temp_file(
-                "preprocessed", 
-                "npz",
-            )
+            # preprocessed_path = fh.FileHandler().create_temp_file(
+            #     "preprocessed", 
+            #     "tif",
+            # )
             mid = time.time()
             print(f"Median filter execution time: {mid - start:.2f} seconds")
             # ro.save_raster_fast_rasterio(
@@ -261,7 +265,8 @@ class ProcessingPipeline:
             # ro.save_raster_np_array(preprocessed_array, param.get_crs(), param.get_transform(), preprocessed_path)
 
             # preprocessed.rio.to_raster(preprocessed_path)
-            param.preprocessed_path = preprocessed
+            rio_instance = vo.array_to_rasterio(preprocessed, param.get_transform(), param.get_crs())
+            param.preprocessed_path = rio_instance
             # del preprocessed_array
             # utils.show_raster(test_median, title="new_median_filter")
             # utils.save_raster(median_filter, r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs", f"T1250_median_filter_D2300.tif", param.dataset.profile)
@@ -271,7 +276,7 @@ class ProcessingPipeline:
             else:
                 param_thresholded_list.append(param.threshold(preprocessed, param.get_thresholds()))
 
-        return self.combine_thresholded_rasters(
+        return self.xarray_combine_thresholded_rasters(
             param_thresholded_list,
             masks_thresholded_list
         )
@@ -305,7 +310,7 @@ class ProcessingPipeline:
         
         # return param_thresholded_list[0]
     
-    def combine_thresholded_rasters(self, param_thresholded, masks_thresholded=[]):
+    def xarray_combine_thresholded_rasters(self, param_thresholded, masks_thresholded=[]):
         """
         More detailed version with explicit handling of dimensions and metadata.
         """
@@ -351,7 +356,7 @@ class ProcessingPipeline:
             
             return result
         else:
-            return param_thresholded[0] # ???
+            return param_thresholded[0]
     
     @staticmethod
     def assign_thresholds_to_params(param_thresholded):

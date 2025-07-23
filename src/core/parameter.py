@@ -8,6 +8,7 @@ from tqdm import tqdm
 from osgeo import gdal, ogr, osr
 import rioxarray as rxr
 import xarray as xr
+import time
 
 class Parameter:
     def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, thresholds=None):
@@ -56,15 +57,18 @@ class Parameter:
         elif array is not None:
             if crs is None or transform is None:
                 raise ValueError("Both crs and transform must be provided when using an array.")
-            if hasattr(transform, 'to_gdal'):
-                transform = transform.to_gdal()
+            # if hasattr(transform, 'to_gdal'):
+            #     transform = transform.to_gdal()
+            if isinstance(transform, Affine):
+                self.transform = transform
+            else:
+                self.transform = Affine.from_gdal(*transform) if isinstance(transform, (list, tuple)) else transform
             if hasattr(crs, 'to_wkt'):
                 crs = crs.to_wkt()
             self.crs = crs # if crs is not None else cfg.Config().get('default_crs')
-            self.transform = transform # if transform is not None else cfg.Config().get('default_transform')
-            
-            path = fh.FileHandler().create_temp_file(prefix=self.name, suffix='tif')
-            self.raster_path = ro.save_raster_gdal(array, crs, transform, path)
+
+            # path = fh.FileHandler().create_temp_file(prefix=self.name, suffix='tif')
+            # self.raster_path = ro.save_raster_gdal(array, crs, transform, path)
             return array
 
         else:
@@ -139,7 +143,7 @@ class Parameter:
         self.mask = None
 
 class Mask(Parameter):
-    def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, thresholds=None):
-        super().__init__(name, raster_path, array, crs, transform, thresholds)
+    def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, threshold=None):
+        super().__init__(name, raster_path, array, crs, transform, threshold)
         self.mask = True
         self.keep_shape = False

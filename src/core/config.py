@@ -77,7 +77,7 @@ class Config:
             thresholds: Threshold values for this parameter.
         """
         if name is None:
-            raise ValueError("Parameter name must be provided.")
+            name = f"param{len(self.params) + 1}"
         
         param = pm.Parameter(
             self.name_check(name), 
@@ -100,18 +100,18 @@ class Config:
             threshold: Threshold value for the mask.
         """
         if name is None:
-            raise ValueError("Mask name must be provided.")
+            name = f"mask{len(self.params) + 1}"
         if isinstance(threshold, (list, tuple)):
-                raise ValueError("Threshold must be a single number, not a list or tuple.")
+            threshold = threshold[0]
 
-        mask = pm.Parameter(
+        threshold = [threshold]
+        mask = pm.Mask(
             self.name_check(name),
             array=array,
             crs=crs,
             transform=transform,
-            thresholds=threshold
+            threshold=threshold
         )
-        mask.mask = True
         self.params.append(mask)
 
     def config_array(self, param, crs, transform, mask=None):
