@@ -15,7 +15,7 @@ from numpy.lib.stride_tricks import sliding_window_view
 import dask.array as da
 from skimage.morphology import dilation, erosion, footprint_rectangle
 from scipy.ndimage import convolve
-from osgeo import gdal
+# from osgeo import gdal
 import rasterio as rio
 from scipy.ndimage import binary_opening
 from skimage.morphology import square
@@ -63,8 +63,9 @@ def dask_nanmedian_filter(data, window_size=3, iterations=1):
         )
     else:
         # Original behavior for numpy arrays
-        dask_arr = da.from_array(data, chunks=(1024, 1024))
-        
+        # dask_arr = da.from_array(data, chunks=(1024, 1024))
+        dask_arr = data
+
         for _ in tqdm(range(iterations), desc="Applying Dask nanmedian filter"):
             dask_arr = dask_arr.map_overlap(
                 nanmedian_2d,
@@ -261,37 +262,37 @@ def boundary_clean(raster_array, iterations=2, radius=3):
     return result
 
 """Sieve Filter"""
-def list_sieve_filter(array_list, crs, transform, iterations=1, threshold=9, connectedness=4):
-    filtered_array = []
+# def list_sieve_filter(array_list, crs, transform, iterations=1, threshold=9, connectedness=4):
+#     filtered_array = []
 
-    for array in tqdm(array_list, desc="Applying Sieve Filter"):
-        height, width = array.shape
-        array_uint8 = np.nan_to_num(array, nan=0).astype("uint8")
+#     for array in tqdm(array_list, desc="Applying Sieve Filter"):
+#         height, width = array.shape
+#         array_uint8 = np.nan_to_num(array, nan=0).astype("uint8")
 
-        src_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
-        src_ds.SetGeoTransform(transform)
-        src_ds.SetProjection(crs)
-        src_ds.GetRasterBand(1).WriteArray(array_uint8)
+#         src_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
+#         src_ds.SetGeoTransform(transform)
+#         src_ds.SetProjection(crs)
+#         src_ds.GetRasterBand(1).WriteArray(array_uint8)
 
-        for _ in range(iterations):
-            dst_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
-            dst_ds.SetGeoTransform(transform)
-            dst_ds.SetProjection(crs)
+#         for _ in range(iterations):
+#             dst_ds = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
+#             dst_ds.SetGeoTransform(transform)
+#             dst_ds.SetProjection(crs)
 
-            gdal.SieveFilter(
-                srcBand=src_ds.GetRasterBand(1),
-                maskBand=None,
-                dstBand=dst_ds.GetRasterBand(1),
-                threshold=threshold,
-                connectedness=connectedness
-            )
-            src_ds = dst_ds
+#             gdal.SieveFilter(
+#                 srcBand=src_ds.GetRasterBand(1),
+#                 maskBand=None,
+#                 dstBand=dst_ds.GetRasterBand(1),
+#                 threshold=threshold,
+#                 connectedness=connectedness
+#             )
+#             src_ds = dst_ds
 
-        filtered_array.append(dst_ds.GetRasterBand(1).ReadAsArray())
+#         filtered_array.append(dst_ds.GetRasterBand(1).ReadAsArray())
 
-    return filtered_array
+#     return filtered_array
 
-def list_sieve_filter_rio(array_list, crs, transform, iterations=1, threshold=9, connectedness=4):
+def list_sieve_filter_rio(array_list, iterations=1, threshold=9, connectedness=4):
     """
     Apply sieve filter to a list of arrays using rasterio.
     
@@ -410,29 +411,6 @@ def get_raster_thresholds(raster, thresholds=['75p', '85p', '95p']):
     
     return temp_thresholds
 
-def get_raster_thresholds_sampled(raster, thresholds=['75p', '85p', '95p'], sample_size=1000000):
-    """
-    Calculate thresholds using random sampling for large rasters.
-    """
-    # Flatten and remove NaN values
-    valid_data = raster[~np.isnan(raster)]
-    
-    # Sample if data is larger than sample_size
-    if len(valid_data) > sample_size:
-        valid_data = np.random.choice(valid_data, size=sample_size, replace=False)
-    
-    temp_thresholds = []
-    for t in thresholds:
-        if isinstance(t, str) and t.endswith('p'):
-            p = float(t[:-1])
-            temp_thresholds.append(np.percentile(valid_data, p).round(4))
-        elif isinstance(t, (int, float)):
-            temp_thresholds.append(t)
-        else:
-            raise ValueError(f"Invalid threshold format: {t}")
-    
-    return temp_thresholds
-
 def show_raster(raster, cmap='gray', title=None):
     import matplotlib.pyplot as plt
 
@@ -462,33 +440,33 @@ def save_raster(raster, output_path, file_name, profile):
         else:
             dst.write(raster)
 
-def save_raster_gdal(array, crs, transform, output_path):
-    """
-    Save a raster array to a file using GDAL.
+# def save_raster_gdal(array, crs, transform, output_path):
+#     """
+#     Save a raster array to a file using GDAL.
     
-    Args:
-        array (np.ndarray): The raster data to save.
-        crs (str): The coordinate reference system in WKT format.
-        transform (tuple): The affine transformation parameters.
-        output_path (str): The path where the raster will be saved.
+#     Args:
+#         array (np.ndarray): The raster data to save.
+#         crs (str): The coordinate reference system in WKT format.
+#         transform (tuple): The affine transformation parameters.
+#         output_path (str): The path where the raster will be saved.
         
-    Returns:
-        str: The path to the saved raster file.
-    """
-    driver = gdal.GetDriverByName('GTiff')
-    height, width = array.shape
-    dataset = driver.Create(output_path, width, height, 1, gdal.GDT_Float32)
+#     Returns:
+#         str: The path to the saved raster file.
+#     """
+#     driver = gdal.GetDriverByName('GTiff')
+#     height, width = array.shape
+#     dataset = driver.Create(output_path, width, height, 1, gdal.GDT_Float32)
     
-    if dataset is None:
-        raise IOError(f"Could not create raster file at {output_path}")
+#     if dataset is None:
+#         raise IOError(f"Could not create raster file at {output_path}")
     
-    dataset.SetGeoTransform(transform) # add error handling
-    dataset.SetProjection(crs)
+#     dataset.SetGeoTransform(transform) # add error handling
+#     dataset.SetProjection(crs)
     
-    dataset.GetRasterBand(1).WriteArray(array)
-    dataset.FlushCache()
+#     dataset.GetRasterBand(1).WriteArray(array)
+#     dataset.FlushCache()
     
-    return output_path
+#     return output_path
 
 def save_raster_fast_rasterio(array, crs, transform, filepath):
     """Save with rasterio using fast settings"""

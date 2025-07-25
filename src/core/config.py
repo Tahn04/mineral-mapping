@@ -4,8 +4,7 @@ import os
 import core.parameter as pm
 import core.file_handler as fh
 import re
-from osgeo import osr, gdal
-import psutil
+from pyproj import CRS, Transformer
 from tqdm import tqdm
 
 class Config:
@@ -65,7 +64,7 @@ class Config:
         """
         return self.params
 
-    def add_parameter(self, array, thresholds=None, crs=None, transform=None, name=None):
+    def add_parameter(self, array, thresholds=None, crs=None, transform=None, name=None, median_iterations=1, median_size=3):
         """
         Add a new parameter to the configuration.
         
@@ -86,6 +85,8 @@ class Config:
             transform=transform, 
             thresholds=thresholds
         )
+        param.median_config = {"size": median_size, "iterations": median_iterations}
+
         self.params.append(param)
     
     def add_mask(self, array=None, crs=None, transform=None, name=None, threshold=None):
@@ -242,7 +243,7 @@ class Config:
             mask_keep_shape = parameters.get('keep_shape', False)
             # mask_pipeline = parameters.get('pipeline', "Default")
 
-            mask_param = pm.Mask(name=mask_name, raster_path=mask_path, thresholds=mask_thresholds)
+            mask_param = pm.Mask(name=mask_name, raster_path=mask_path, threshold=mask_thresholds)
             
             mask_param.operator = mask_operator
             mask_param.median = mask_median
@@ -378,11 +379,15 @@ class Config:
         
     def get_output_path(self):
         """Get the output path for the current process."""
+        if hasattr(self, 'output_path') and self.output_path:
+            return self.output_path
         process = self.get_current_process()
         return process['vectorization'].get('output_dict', '')
     
     def get_driver(self):
         """Get the driver for the current process."""
+        if hasattr(self, 'driver') and self.driver:
+            return self.driver
         process = self.get_current_process()
         return process['vectorization'].get('driver', 'pandas')
     
@@ -413,19 +418,37 @@ class Config:
         """Get the coordinate reference system for the current process."""
         process = self.get_current_process()
         cs = process['vectorization'].get('cs', None)
-        srs = osr.SpatialReference()
-        srs.ImportFromWkt(crs)
-        
+
+        crs_obj = CRS.from_string(crs) if isinstance(crs, str) else crs
         if cs is None or cs == "GCS":
-            geogcs = srs.CloneGeogCS()
-            geogcs_wkt = geogcs.ExportToWkt()
-            return geogcs_wkt
+            if crs_obj.is_projected:
+                geogcs = crs_obj.geodetic_crs
+                return geogcs.to_wkt()
+            else:
+                return crs_obj.to_wkt()
         elif cs == "PCS":
-            projcs = srs.CloneProjCS()
-            projcs_wkt = projcs.ExportToWkt()
-            return projcs_wkt
+            if crs_obj.is_geographic:
+                print("CRS is geographic, converting to projected CRS.")
+                return crs_obj.to_wkt()
+            else:
+                return crs_obj.to_wkt()
         else:
             return cs
+        # process = self.get_current_process()
+        # cs = process['vectorization'].get('cs', None)
+        # srs = osr.SpatialReference()
+        # srs.ImportFromWkt(crs)
+        
+        # if cs is None or cs == "GCS":
+        #     geogcs = srs.CloneGeogCS()
+        #     geogcs_wkt = geogcs.ExportToWkt()
+        #     return geogcs_wkt
+        # elif cs == "PCS":
+        #     projcs = srs.CloneProjCS()
+        #     projcs_wkt = projcs.ExportToWkt()
+        #     return projcs_wkt
+        # else:
+        #     return cs
 
     def get_color(self):
         """Get the color for the current process."""
@@ -434,6 +457,8 @@ class Config:
 
     def get_stats(self):
         """Get the statistics configuration for the current process."""
+        if hasattr(self, 'stats') and self.stats:
+            return self.stats
         process = self.get_current_process()
         return process['vectorization'].get('stats', [])
     

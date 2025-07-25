@@ -1,7 +1,8 @@
-from .tile_processing import ProcessingPipeline
-from .config import Config
+from core.tile_processing import ProcessingPipeline
+from core.config import Config
 
 class Vectroscopy:
+    """Main class for handling spectroscopy data processing."""
     def __init__(self, config):
         self.config = config
 
@@ -20,9 +21,9 @@ class Vectroscopy:
         config = Config(config_yaml, process=process)
         config.config_yaml()
         return cls(config)
-    
+
     @classmethod
-    def from_array(cls, array, thresholds=None, crs=None, transform=None, name=None):
+    def from_array(cls, array, thresholds=None, crs=None, transform=None, name=None, median_iterations=1, median_size=3):
         """
         Create an instance of Vectroscopy from an array.
         
@@ -32,15 +33,17 @@ class Vectroscopy:
             crs: Coordinate Reference System of the raster data.
             transform: Affine transformation for the raster data.
             name: Name for the parameter.
-        
+            median_iterations: Number of iterations for the median filter.
+            median_size: Size of the median filter.
+
         Returns:
             Vectroscopy: An instance of the Vectroscopy class.
         """
         config = Config(process="default")  # could be where you have multiple processing profiles.
         # config.config_array(param=rast, mask=mask, crs=crs, transform=transform)
-        config.add_parameter(array=array, thresholds=thresholds, crs=crs, transform=transform, name=name)
+        config.add_parameter(array=array, thresholds=thresholds, crs=crs, transform=transform, name=name, median_iterations=median_iterations, median_size=median_size)
         return cls(config)
-    
+
     def add_param(self, array, thresholds=None, crs=None, transform=None, name=None):
         """
         Add another parameter to the existing configuration.
@@ -57,7 +60,7 @@ class Vectroscopy:
         """
         self.config.add_parameter(array=array, crs=crs, transform=transform, name=name, thresholds=thresholds)
         return self
-    
+
     def add_mask(self, array=None, crs=None, transform=None, name=None, threshold=None):
         """
         Add a mask to the existing configuration.
@@ -89,7 +92,7 @@ class Vectroscopy:
         Returns:
             self: Returns self to enable method chaining.
         """
-        self.config.output_stats = stats
+        self.config.stats = stats
         self.config.show_base = show_base
         self.config.base_stats = base_stats
         self.config.driver = driver

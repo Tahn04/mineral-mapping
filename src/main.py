@@ -2,7 +2,7 @@ import core.tile_processing as tp
 import core.vectroscopy as vp
 import rasterio
 import numpy as np
-from osgeo import gdal, ogr, osr
+# from osgeo import gdal, ogr, osr
 
 def main():
     
@@ -34,23 +34,52 @@ def main():
         transform = src.transform
         crs = src.crs
     # thresholds = ['70p', '80p', '90p']
-    thresholds = ["95p", "99p"]
+    thresholds = [0.005, 0.0125, 0.02, 0.0275] #["95p", "99p"]
     threshold = [0.005]
-    name = "D2300"
 
-    gdf = vp.Vectroscopy.from_array(
+    # gdf = vp.Vectroscopy.from_array(
+    #     D2300, 
+    #     thresholds, 
+    #     crs, 
+    #     transform, 
+    #     name,
+    # ).add_mask(
+    #     BD1500_2,
+    #     crs=crs,
+    #     transform=transform,
+    #     name="BD1500_2",
+    #     threshold=threshold
+    # ).vectorize()
+
+    vp_inst = vp.Vectroscopy.from_array(
         D2300, 
         thresholds, 
         crs, 
         transform, 
-        name
+        "D2300",
     ).add_mask(
         BD1500_2,
         crs=crs,
         transform=transform,
         name="BD1500_2",
         threshold=threshold
-    ).vectorize()
+    ).config_output(
+        stats=["area", "mean", "std", '5', 'median', '95'],
+        show_base=True,
+        base_stats=True,
+        driver="ESRI Shapefile",
+        output_path=r"\\lasp-store\home\taja6898\Documents\Code\vectroscopy\outputs"
+    )
+
+    # vp_inst.add_mask(
+    #     BD1500_2,
+    #     crs=crs,
+    #     transform=transform,
+    #     name="BD1500_2",
+    #     threshold=threshold
+    # )
+
+    gdf = vp_inst.vectorize()
 
     """from specific files"""
     # vp.Vectroscopy.from_files(
@@ -63,3 +92,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# mars_gcs = {
+#     "proj": "longlat",
+#     "a": 3396190,
+#     "rf": 169.894447223612,
+#     "no_defs": True
+# }

@@ -148,23 +148,27 @@ processes:
         show: True
   
   D2300:
-    name: vectorizing_test
+    name: D2300_yaml
     path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters
     parameters:
       D2300:
         # path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG
-        # path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
-        path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
+        path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
+        # path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
         # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
         # - [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275]
         # - [0.0075, 0.0175, 0.0275]
         thresholds: [0.005, 0.0125, 0.02, 0.0275] # what ran on the arcpy code
-        # - [75p, 85p, 95p]
+        # thresholds: [75p, 85p, 95p]
         # - [0.0275]
         median:
           iterations: 1
 
-    masks: {}
+    masks: 
+      pixel_guide:
+        path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_NSP_EQU_IMP_D2300_GID.IMG
+        thresholds: [1]
+        keep_shape: True # will be applied after processing pipeline
 
     pipeline:
       - task: majority
@@ -177,13 +181,13 @@ processes:
       # - task: open
       #   iterations: 1
     vectorization:
-      driver: pandas # "pandas", "ESRI Shapefile", GeoJSON, GPKG
+      driver: ESRI Shapefile # "pandas", "ESRI Shapefile", GeoJSON, GPKG
       cs: GCS # PCS or GCS or any wkt/proj4
       simplify: 0
       # stats: ["area", "mean", "std", "5p", '25p', 'median', '75p', "95p"]
       stats: ["area", "mean", "std", '25p', 'median', '75p',]
       colormap: Blues # matplotlib colormap
-      output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+      output_dict: \\lasp-store\home\taja6898\Documents\Code\vectroscopy\outputs
       base: 
         show: True
         stats: [] #["area", "mean", "std", "min", "max", '25p', '75p']
@@ -232,7 +236,7 @@ processes:
         stats: []
 
   TESTING_INDIC:
-    name: G2_PolySulfates_TEST_DELIVERY
+    name: G2_PolySulfates_TEST_DELIVERY2
     path:
     parameters:
       BD1900_2:
@@ -303,7 +307,7 @@ processes:
         stats: []
 
   TESTING_INDIC_MC:
-    name: MC13_PolySulfates_TEST_DELIVERY_NEW
+    name: MC13_PolySulfates_7_24
     path:
     parameters:
       BD1900_2:
@@ -367,7 +371,7 @@ processes:
       simplify: 0
       stats: ["area", "mean", "std", "5p", '25p', 'median', '75p', "95p"]
       color: violet #cyan
-      output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+      output_dict: \\lasp-store\home\taja6898\Documents\Code\vectroscopy\outputs
       stack: True
       base: 
         show: True

@@ -2,7 +2,7 @@ import os
 import re
 import json
 
-import core.config as cfg
+# import core.config as cfg
 import core.raster_ops as ro
 import core.vector_ops as vo
 import core.parameter as pm
@@ -12,10 +12,8 @@ from tqdm import tqdm
 import time
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import shutil
 import shapely
 import xarray as xr
-import rasterio as rio
 
 class ProcessingPipeline:
     """
@@ -30,7 +28,7 @@ class ProcessingPipeline:
         self.crs = None
         self.transform = None
         self.mask = None
-        self.indication = False
+        self.indicator = False
     
     def process_file(self):
         """
@@ -41,12 +39,12 @@ class ProcessingPipeline:
             fh.FileHandler()
             print(fh.FileHandler().get_directory())
             process = self.config.get_current_process()
-            for _ in tqdm(range(1), desc=f"Processing: {process["name"]}"):     
+            for _ in tqdm(range(1), desc=f"Processing: {process['name']}"):
                 param_list = self.config.get_parameters_list()
                 processed_rasters = self.process_parameters(param_list)
                 return self.vectorize(processed_rasters, param_list)
         finally:
-            fh.FileHandler().cleanup() 
+            fh.FileHandler().cleanup()
             print("files cleaned up.")
 
     def vectorize(self, raster_list, param_list):
@@ -62,46 +60,27 @@ class ProcessingPipeline:
             List: A list of vectorized geometries.
         """
         simplification_level = self.config.get_simplification_level() 
-
-        # stats_dict = vo.list_raster_stats(band_array=param_list[0].raster, raster_list=raster_list, stats=["count", "mean", "std", "min", "max", 'median', '75p'])
-
         driver = self.config.get_driver()
         thresholds = self.assign_thresholds(raster_list, param_list)
         stats_list = self.config.get_stats()
 
-        # # Old vectorization
-        # start_old = time.time()
-        # polygons = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, simplification_level)
-        # gdf = vo.list_zonal_stats(polygons, param_list, self.crs, self.transform, stats_list)
-        # end_old = time.time()
-        # print(f"Old vectorization took {end_old - start_old:.2f} seconds")
-
-        # New files based vector/stats
         start_old = time.time()
         # file_paths = vo.list_raster_to_shape_gdal(raster_list, thresholds, self.crs, self.transform)
         # gdf = vo.list_file_zonal_stats(file_paths, param_list, self.crs, self.transform, stats_list, simplification_level)
         gdf = vo.list_vectorize(raster_list, thresholds, self.crs, self.transform, simplification_level)
-        gdf = vo.list_zonal_stats(gdf, param_list, self.crs, self.transform, stats_list)
-
-        # gdf = vo.list_raster_stats(param_list, raster_list, stats_list, thresholds)
+        gdf = vo.list_zonal_stats(gdf, param_list, self.transform, stats_list)
         end_old = time.time()
         print(f"Old vectorization took {end_old - start_old:.2f} seconds")
         color = self.config.get_color()
         if color:    
             gdf = self.assign_color(gdf, color=color)
 
-        # mars_gcs = {
-        #     "proj": "longlat",
-        #     "a": 3396190,
-        #     "rf": 169.894447223612,
-        #     "no_defs": True
-        # }
         gdf.set_crs(self.crs, inplace=True)
         cs = self.config.get_cs(self.crs)
         projected_gdf = gdf.to_crs(cs) 
 
         projected_gdf.geometry = shapely.set_precision(projected_gdf.geometry, grid_size=0.00001) # slow 
-        
+        # projected_gdf.geometry = projected_gdf.geometry.se
         if driver == "pandas":
             return projected_gdf
         
@@ -123,10 +102,10 @@ class ProcessingPipeline:
                 for threshold in thresholds:
                     thresh_gdf = gdf[gdf['Threshold'] == threshold]
                     filename = fh.FileHandler().create_output_filename(driver, name, threshold)
-                    vo.save_shapefile(thresh_gdf, new_output_dict, filename, driver=driver)
+                    vo.save_gdf_to_file(thresh_gdf, new_output_dict, filename, driver=driver)
                 return None
         filename = fh.FileHandler().create_output_filename(driver, name, "stack")
-        vo.save_shapefile(gdf, output_dict, filename, driver=driver)
+        vo.save_gdf_to_file(gdf, output_dict, filename, driver=driver)
 
     def process_parameters(self, param_list):
         """
@@ -138,77 +117,215 @@ class ProcessingPipeline:
         start_time = time.time()
 
         param_list, post_processing_masks = self.get_post_processing_masks(param_list)
-        raster_list = self.threshold(param_list)
-        
-        # test = raster_list[0].data.compute()
-        # raster_list = ro.xarray_to_array(raster_list)
+        full_mask = self.complete_mask(param_list, post_processing_masks)
+        raster_list = self.threshold(param_list, full_mask)
         
         end_time = time.time()
         print(f"xarray_to_array execution time: {end_time - start_time:.2f} seconds")
         
         target_param = param_list[0]
-        self.crs = target_param.get_crs()
-        self.transform = target_param.get_transform()
+        self.crs = target_param.crs
+        self.transform = target_param.transform
 
         raster_list = self.processing_pipeline(raster_list)
 
         start_time = time.time()
-        raster_list = self.clean_rasters(raster_list, param_list, post_processing_masks)
+        raster_list = self.clean_rasters(raster_list, param_list, full_mask)
         end_time = time.time()
         print(f"clean_rasters execution time: {end_time - start_time:.2f} seconds")
         return raster_list
 
-    def clean_rasters(self, raster_list, param_list, post_processing_masks):
-        """Applies the coverage mask to the raster list."""
-        coverage_mask = self.calculate_coverage_mask(param_list)
+    def clean_rasters(self, raster_list, param_list, full_mask):
+        """Applies the coverage mask to the raster list - optimized version."""
+        # Early exit for empty inputs
+        if not raster_list:
+            return []
 
-        for mask in post_processing_masks:
-            val=mask.get_thresholds()[0]
-            coverage_mask = self.clip_raster(coverage_mask, mask.raster, val=val)
+        coverage_mask = full_mask
 
-        for i in range(len(raster_list)):
-            raster_list[i] = xr.DataArray(raster_list[i], dims=('y', 'x')) * coverage_mask
-        raster_list = list(raster_list)
-
+        # Convert coverage_mask to numpy once if it's xarray
+        if isinstance(coverage_mask, xr.DataArray):
+            coverage_mask_np = coverage_mask.values  # Use .values instead of .data.compute()
+        else:
+            coverage_mask_np = coverage_mask
+        
+        # Pre-allocate result list
         base_check = self.config.get_base_check()
-        if base_check:
-            raster_list.insert(0, coverage_mask.astype(np.uint8))
         final_raster_list = []
-        for raster in raster_list:
-            if isinstance(raster, xr.DataArray):
-                if hasattr(raster.data, 'compute'):
-                    # If the raster is an xarray DataArray, compute it
-                    array = raster.data.compute()
+        if base_check:
+            final_raster_list.append(coverage_mask_np.astype(np.uint8))
+        
+        # Process rasters in-place when possible
+        for raster in tqdm(raster_list, desc="Cleaning rasters"):
+            if isinstance(raster, np.ndarray):
+                # Direct numpy operation - fastest path
+                cleaned = raster * coverage_mask_np
+            else:
+                # Handle xarray case
+                if hasattr(raster, 'values'):
+                    cleaned = raster.values * coverage_mask_np
                 else:
-                    array = raster.data
-                final_raster_list.append(np.asarray(array))
+                    # Fallback for other array types
+                    cleaned = np.asarray(raster) * coverage_mask_np
+            
+            final_raster_list.append(cleaned)
+        
         return final_raster_list
 
     @staticmethod
     def clip_raster(raster, mask, val=1):
-        """Masks the raster data using a boolean mask or a value."""
+        """Masks the raster data using a boolean mask or a value - optimized."""
+        # Create boolean mask efficiently
         if val:
-            mask = (mask != val)
-        if isinstance(mask, xr.DataArray) and isinstance(raster, xr.DataArray):
-            mask =  xr.ufuncs.logical_not(mask)
+            if isinstance(mask, xr.DataArray):
+                bool_mask = mask != val
+            else:
+                bool_mask = mask != val
         else:
-            mask = np.logical_not(mask)
-        return raster * mask
-    
-    def calculate_coverage_mask(self, param_list):
-        """Calculate the coverage mask for the raster data."""
-        # Multiply all coverage masks together to get a joint coverage mask
-        joint_mask = None
+            bool_mask = mask
+        
+        # Apply mask directly without logical_not operations
+        if isinstance(raster, xr.DataArray) and isinstance(bool_mask, xr.DataArray):
+            return raster.where(~bool_mask, 0)  # Use xarray's where method
+        else:
+            # Convert to numpy for efficient operations
+            if isinstance(raster, xr.DataArray):
+                raster_data = raster.values
+            else:
+                raster_data = raster
+                
+            if isinstance(bool_mask, xr.DataArray):
+                mask_data = bool_mask.values
+            else:
+                mask_data = bool_mask
+            
+            return raster_data * ~mask_data
+
+    def calculate_param_coverage_mask(self, param_list):
+        """Calculate the coverage mask for the raster data - optimized."""
+        if not param_list:
+            return None
+        
+        # Handle single parameter case efficiently
+        if len(param_list) == 1:
+            param = param_list[0]
+            if isinstance(param, xr.DataArray):
+                return ~np.isnan(param.values)  # Use .values instead of .data
+            else:
+                return param.coverage_mask()
+        
+        # For multiple parameters, use more efficient reduction
+        masks = []
         for param in param_list:
             if isinstance(param, xr.DataArray):
-                coverage_mask = ~np.isnan(param.data)
+                mask = ~np.isnan(param.values)
             else:
-                coverage_mask = param.coverage_mask()
-            if joint_mask is None:
-                joint_mask = coverage_mask
+                mask = param.coverage_mask()
+            masks.append(mask)
+        
+        # Use numpy's logical_and.reduce for efficient multi-mask combination
+        return np.logical_and.reduce(masks)
+    
+    def complete_mask(self, param_list, post_processing_masks=None):
+        """Calculate the coverage mask for the raster data."""
+        coverage_mask = self.calculate_param_coverage_mask(param_list)
+   
+        if post_processing_masks:
+            for mask in post_processing_masks:
+                val = mask.thresholds[0]
+                coverage_mask = self.clip_raster(coverage_mask, mask.dataset, val=val)
+        return coverage_mask
+
+    # Alternative version using lazy evaluation for very large datasets
+    def clean_rasters_lazy(self, raster_list, param_list, post_processing_masks):
+        """Memory-efficient version using generators for large datasets."""
+        if not raster_list:
+            return []
+        
+        coverage_mask = self.calculate_param_coverage_mask(param_list)
+        
+        # Apply post-processing masks
+        if post_processing_masks:
+            for mask in post_processing_masks:
+                val = mask.thresholds[0]
+                coverage_mask = self.clip_raster(coverage_mask, mask.raster, val=val)
+        
+        # Convert to numpy once
+        if isinstance(coverage_mask, xr.DataArray):
+            coverage_mask_np = coverage_mask.values
+        else:
+            coverage_mask_np = coverage_mask
+        
+        def process_raster(raster):
+            """Process a single raster with the coverage mask."""
+            if isinstance(raster, np.ndarray):
+                return raster * coverage_mask_np
+            elif hasattr(raster, 'values'):
+                return raster.values * coverage_mask_np
             else:
-                joint_mask = joint_mask & coverage_mask
-        return joint_mask
+                return np.asarray(raster) * coverage_mask_np
+        
+        # Build result list
+        final_raster_list = []
+        base_check = self.config.get_base_check()
+        if base_check:
+            final_raster_list.append(coverage_mask_np.astype(np.uint8))
+        
+        # Process rasters one by one to save memory
+        for raster in tqdm(raster_list, desc="Cleaning rasters"):
+            final_raster_list.append(process_raster(raster))
+        
+        return final_raster_list
+    # def clean_rasters(self, raster_list, param_list, post_processing_masks):
+    #     """Applies the coverage mask to the raster list."""
+    #     coverage_mask = self.calculate_coverage_mask(param_list)
+
+    #     for mask in post_processing_masks:
+    #         val=mask.get_thresholds()[0]
+    #         coverage_mask = self.clip_raster(coverage_mask, mask.raster, val=val)
+
+    #     for i in range(len(raster_list)):
+    #         raster_list[i] = xr.DataArray(raster_list[i], dims=('y', 'x')) * coverage_mask
+    #     raster_list = list(raster_list)
+
+    #     base_check = self.config.get_base_check()
+    #     if base_check:
+    #         raster_list.insert(0, coverage_mask.astype(np.uint8))
+    #     final_raster_list = []
+    #     for raster in tqdm(raster_list, desc="Cleaning rasters"):
+    #         if isinstance(raster, xr.DataArray):
+    #             if hasattr(raster.data, 'compute'):
+    #                 array = raster.data.compute()
+    #             else:
+    #                 array = raster.data
+    #             final_raster_list.append(np.asarray(array))
+    #     return final_raster_list
+
+    # @staticmethod
+    # def clip_raster(raster, mask, val=1):
+    #     """Masks the raster data using a boolean mask or a value."""
+    #     if val:
+    #         mask = (mask != val)
+    #     if isinstance(mask, xr.DataArray) and isinstance(raster, xr.DataArray):
+    #         mask =  xr.ufuncs.logical_not(mask)
+    #     else:
+    #         mask = np.logical_not(mask)
+    #     return raster * mask
+    
+    # def calculate_coverage_mask(self, param_list):
+    #     """Calculate the coverage mask for the raster data."""
+    #     # Multiply all coverage masks together to get a joint coverage mask
+    #     joint_mask = None
+    #     for param in param_list:
+    #         if isinstance(param, xr.DataArray):
+    #             coverage_mask = ~np.isnan(param.data)
+    #         else:
+    #             coverage_mask = param.coverage_mask()
+    #         if joint_mask is None:
+    #             joint_mask = coverage_mask
+    #         else:
+    #             joint_mask = joint_mask & coverage_mask
+    #     return joint_mask
             
     
     def get_post_processing_masks(self, param_list):
@@ -221,7 +338,7 @@ class ProcessingPipeline:
                 param_list.remove(param)
         return param_list, keep_shape_masks
 
-    def threshold(self, param_list):
+    def threshold(self, param_list, mask=None):
         """
         Applies median filter, thresholds, and then masks the data.
         
@@ -235,46 +352,24 @@ class ProcessingPipeline:
         param_thresholded_list = []
         masks_thresholded_list = []
         for param in param_list:
-            if not isinstance(param, pm.Parameter):
-                raise TypeError(f"Expected Parameter object, got {type(param)}")
-            
-            # Apply median filter
-            median_iterations = param.get_median_config().get("iterations", 1)
+            median_iterations = param.get_median_config().get("iterations", 0)
             median_size = param.get_median_config().get("size", 3)
-
-            # preprocessing = param.median_filter(iterations=median_iterations, size=median_size)
-            # utils.show_raster(preprocessing, title="median_filter")
+            # Apply median filter
             start = time.time()
-            # with rio.open(param.raster_path) as src:
-            #     param.raster = src.read(1, masked=True).filled(np.nan)
-
-            preprocessed = param.median_filter(iterations=median_iterations, size=median_size)
-            # preprocessed_array = preprocessed.data.compute() # this takes a while
-            # preprocessed_path = fh.FileHandler().create_temp_file(
-            #     "preprocessed", 
-            #     "tif",
-            # )
+            preprocessed = ro.dask_nanmedian_filter(param.dataset, median_size, median_iterations)
             mid = time.time()
             print(f"Median filter execution time: {mid - start:.2f} seconds")
-            # ro.save_raster_fast_rasterio(
-            #     preprocessed_array,
-            #     param.get_crs(),
-            #     param.get_transform(),
-            #     preprocessed_path
-            # )
-            # ro.save_raster_np_array(preprocessed_array, param.get_crs(), param.get_transform(), preprocessed_path)
 
-            # preprocessed.rio.to_raster(preprocessed_path)
-            rio_instance = vo.array_to_rasterio(preprocessed, param.get_transform(), param.get_crs())
-            param.preprocessed_path = rio_instance
-            # del preprocessed_array
-            # utils.show_raster(test_median, title="new_median_filter")
-            # utils.save_raster(median_filter, r"\\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs", f"T1250_median_filter_D2300.tif", param.dataset.profile)
-
+            if mask is not None:
+                preprocessed = preprocessed.where(mask, np.nan)
+            self.save_raster(preprocessed, param)
+            final = time.time()
+            print(f"Raster saved execution time: {final - mid:.2f} seconds")
+        
             if param.mask:
-                masks_thresholded_list.append(param.threshold(preprocessed, param.get_thresholds()))
+                masks_thresholded_list.append(param.threshold(preprocessed, param.thresholds))
             else:
-                param_thresholded_list.append(param.threshold(preprocessed, param.get_thresholds()))
+                param_thresholded_list.append(param.threshold(preprocessed, param.thresholds))
 
         return self.xarray_combine_thresholded_rasters(
             param_thresholded_list,
@@ -316,7 +411,7 @@ class ProcessingPipeline:
         """
         
         if len(masks_thresholded) > 0 or len(param_thresholded) > 1:
-            # Get threshold coordinates from first available array
+            self.indicator = True
             if param_thresholded:
                 threshold_coords = param_thresholded[0].coords['threshold']
                 template = param_thresholded[0]
@@ -357,7 +452,24 @@ class ProcessingPipeline:
             return result
         else:
             return param_thresholded[0]
-    
+        
+    def save_raster(self, data, param):
+        """
+        Save the raster data to a file only if stats are to be computed.
+        """
+        if self.config.get_stats():
+            preprocessed_path = fh.FileHandler().create_temp_file(
+                "preprocessed", 
+                "tif",
+            )
+            ro.save_raster_fast_rasterio(
+                data,
+                param.crs,
+                param.transform,
+                preprocessed_path
+            )
+            param.preprocessed_path = preprocessed_path
+
     @staticmethod
     def assign_thresholds_to_params(param_thresholded):
         num_thresholds = len(param_thresholded[0].threshold)
@@ -412,8 +524,6 @@ class ProcessingPipeline:
                     raster_list,
                     iterations=iterations,
                     threshold=threshold,
-                    crs=self.crs,
-                    transform=self.transform,
                     connectedness=connectedness
                 )
                 if show_rasters:
@@ -441,11 +551,11 @@ class ProcessingPipeline:
         Returns:
             List: A list of thresholds for each parameter.
         """
-        if self.indication:
+        if self.indicator:
             size = len(raster_list)
             thresholds = [i + 1 for i in range(size)]
         else:
-            thresholds = param_list[0].get_thresholds()
+            thresholds = param_list[0].thresholds
         
         base_check = self.config.get_base_check()
         if base_check:

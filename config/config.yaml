@@ -42,7 +42,7 @@ processes:
       driver: pandas # "pandas", "ESRI Shapefile", GeoJSON, GPKG
       cs: GCS # PCS or GCS or any wkt/proj4
       simplify: 0
-      stats: ["area", "mean", "std", '25p', 'median', '75p',]
+      stats: ["area", "mean", "std", '25p', 'median', '75p']
       colormap: Blues # matplotlib colormap
       output_dict:
       base: 
