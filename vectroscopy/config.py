@@ -1,8 +1,8 @@
 import yaml
 # from pydantic import BaseModel
 import os
-import core.parameter as pm
-import core.file_handler as fh
+from . import parameter as pm
+from . import file_handler as fh
 import re
 from pyproj import CRS, Transformer
 from tqdm import tqdm
@@ -13,7 +13,7 @@ class Config:
     Loads and provides access to settings from a YAML file.
     """
     def __init__(self, yaml_file=None, process=None):
-        default_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../config/config.yaml"))
+        default_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../config/config.yaml"))
         self.yaml = True
         if yaml_file is None:
             self.yaml = False
@@ -382,8 +382,10 @@ class Config:
         if hasattr(self, 'output_path') and self.output_path:
             return self.output_path
         process = self.get_current_process()
-        return process['vectorization'].get('output_dict', '')
-    
+        if process['vectorization'].get('output_dict', ''):
+            return process['vectorization']['output_dict']
+        return os.getcwd()
+
     def get_driver(self):
         """Get the driver for the current process."""
         if hasattr(self, 'driver') and self.driver:

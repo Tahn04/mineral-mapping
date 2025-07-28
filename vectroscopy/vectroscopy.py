@@ -1,5 +1,5 @@
-from core.tile_processing import ProcessingPipeline
-from core.config import Config
+from .tile_processing import ProcessingPipeline
+from .config import Config
 
 class Vectroscopy:
     """Main class for handling spectroscopy data processing."""

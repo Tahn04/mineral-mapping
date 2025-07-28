@@ -2,11 +2,11 @@ import os
 import re
 import json
 
-# import core.config as cfg
-import core.raster_ops as ro
-import core.vector_ops as vo
-import core.parameter as pm
-import core.file_handler as fh
+# from . import config as cfg
+from . import raster_ops as ro
+from . import vector_ops as vo
+from . import parameter as pm
+from . import file_handler as fh
 import numpy as np
 from tqdm import tqdm
 import time

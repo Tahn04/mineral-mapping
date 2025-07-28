@@ -1,5 +1,4 @@
-import core.tile_processing as tp
-import core.vectroscopy as vp
+import vectroscopy as vp
 import rasterio
 import numpy as np
 # from osgeo import gdal, ogr, osr
@@ -17,6 +16,8 @@ def main():
     lat_path = r"\\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG"
     bd_path = r"\\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_BD1500_2_MOS_IMP.IMG"
     mc_bd_path = r"\\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_BD1500_2.IMG"
+    mac_tile_path = '/Users/tahnjandai/SPATIAL DATA/T1250 Demo Parameters/T1250_cdodtot_BAL1_D2300.IMG'
+    mac_mc_path = '/Users/tahnjandai/SPATIAL DATA/MC13_demo_parameters/MC13_BAL1_EQU_IMP_D2300.IMG'
     # raster = gdal.Open(path)
     # band = raster.GetRasterBand(1)
     # band_array = band.ReadAsArray()
@@ -25,14 +26,14 @@ def main():
     # gdal_crs = raster.GetProjection()
     # gdal_transform = raster.GetGeoTransform()
 
-    with rasterio.open(mc_path) as src:
+    with rasterio.open(mac_tile_path) as src:
         D2300 = src.read(1, masked=True).filled(np.nan)
         transform = src.transform
         crs = src.crs
-    with rasterio.open(mc_bd_path) as src:
-        BD1500_2 = src.read(1, masked=True).filled(np.nan)
-        transform = src.transform
-        crs = src.crs
+    # with rasterio.open(mc_bd_path) as src:
+    #     BD1500_2 = src.read(1, masked=True).filled(np.nan)
+    #     transform = src.transform
+    #     crs = src.crs
     # thresholds = ['70p', '80p', '90p']
     thresholds = [0.005, 0.0125, 0.02, 0.0275] #["95p", "99p"]
     threshold = [0.005]
@@ -57,18 +58,18 @@ def main():
         crs, 
         transform, 
         "D2300",
-    ).add_mask(
-        BD1500_2,
-        crs=crs,
-        transform=transform,
-        name="BD1500_2",
-        threshold=threshold
-    ).config_output(
-        stats=["area", "mean", "std", '5', 'median', '95'],
-        show_base=True,
-        base_stats=True,
-        driver="ESRI Shapefile",
-        output_path=r"\\lasp-store\home\taja6898\Documents\Code\vectroscopy\outputs"
+    # ).add_mask(
+    #     BD1500_2,
+    #     crs=crs,
+    #     transform=transform,
+    #     name="BD1500_2",
+    #     threshold=threshold
+    # ).config_output(
+    #     stats=["area", "mean", "std", '5', 'median', '95'],
+    #     show_base=True,
+    #     base_stats=True,
+    #     driver="ESRI Shapefile",
+    #     output_path=r"\\lasp-store\home\taja6898\Documents\Code\vectroscopy\outputs"
     )
 
     # vp_inst.add_mask(

@@ -1,8 +1,8 @@
 from affine import Affine
-import core.config as cfg
-import core.raster_ops as ro
-import core.vector_ops as vo
-import core.file_handler as fh
+from . import config as cfg
+from . import raster_ops as ro
+from . import vector_ops as vo
+from . import file_handler as fh
 import numpy as np
 from tqdm import tqdm
 import rioxarray as rxr
@@ -29,7 +29,7 @@ class Parameter:
             rx_ds = rxr.open_rasterio(raster_path, masked=True, chunks="auto")
             rx_ds = Parameter.preprocess_raster(rx_ds)
             self.crs = rx_ds.spatial_ref.crs_wkt
-            transform = rx_ds.spatial_ref.GeoTransform
+            transform = getattr(rx_ds.spatial_ref, "GeoTransform", None)
             self.transform = self.config_transform(transform)
 
             return rx_ds
@@ -37,10 +37,26 @@ class Parameter:
         elif array is not None:
             if isinstance(transform, Affine):
                 self.transform = transform
+            elif isinstance(transform, (list, tuple)):
+                self.transform = Affine.from_gdal(*transform)
+            elif transform is None:
+                # Create default identity transform with pixel size 1.0
+                # This allows coordinate creation and file writing but warns user
+                import warnings
+                warnings.warn(
+                    "No transform provided. Using identity transform with 1.0 pixel size. "
+                    "Output coordinates will be in pixel space, not geographic coordinates.",
+                    UserWarning
+                )
+                self.transform = Affine.identity()
             else:
-                self.transform = Affine.from_gdal(*transform) if isinstance(transform, (list, tuple)) else transform
+                self.transform = transform
+                
             if hasattr(crs, 'to_wkt'):
                 crs = crs.to_wkt()
+            elif crs is None:
+                # Default to a generic CRS if none provided
+                crs = "LOCAL_CS[\"Arbitrary\"]"
             self.crs = crs 
 
             if not isinstance(array, da.Array):

@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vectroscopy"
+version = "0.1.0"
+description = "A Python package for vectorized raster data by threshold."
+authors = [{ name = "Tahn Jandai", email = "taja6898@colorado.edu" }]
+license = { file = "LICENSE.txt" }
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+keywords = ["raster", "vectorization", "gis", "remote-sensing", "geospatial"]
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "xarray",
+    "rioxarray",
+    "rasterio",
+    "scipy",
+    "geopandas",
+    "affine",
+    "exactextract",
+    "dask",
+    "scikit-image",
+    "pyyaml",
+    "psutil",
+    "bottleneck",
+    "tqdm",
+    "pyproj",
+    "matplotlib",
+]
+
+[project.scripts]
+vectroscopy = "vectroscopy.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/vectroscopy"
+"Bug Reports" = "https://github.com/yourusername/vectroscopy/issues"
+"Source" = "https://github.com/yourusername/vectroscopy"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vectroscopy*"]

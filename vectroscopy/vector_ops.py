@@ -12,8 +12,8 @@ import dask.array as da
 # from osgeo import gdal, osr, ogr
 import rasterio
 from scipy import ndimage
-import core.raster_ops as ro
-import core.file_handler as fh
+from . import raster_ops as ro
+from . import file_handler as fh
 import bottleneck as bn
 import xarray as xr
 
@@ -356,7 +356,7 @@ def list_zonal_stats(polygons, param_list, transform, stats_list):
         stats_config = config_stats(stats_list, param.name)  # Get the configured stats for the parameter
         
         # raster_path = get_tiled_raster_path(param)
-        temp = zonal_stats(polygons, param, pixel_area,stats_config)
+        temp = zonal_stats(polygons, param, pixel_area, stats_config)
         # temp = tiled_zonal_stats(gdf, raster_path, stats_config, tile_size=2048, overlap=100, temp_dir=None, cleanup=True, strategy="raster-sequential")
         if results.empty:
             results = temp
