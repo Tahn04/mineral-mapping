@@ -65,6 +65,8 @@ def main():
         crs, 
         transform, 
         "D2300"
+    # ).config_output(
+    #     driver="ESRI Shapefile",
     )
     
     print("4. Running vectorization...")
@@ -73,8 +75,11 @@ def main():
     gdf = vp_inst.vectorize()
     
     print(f"✓ Vectorization complete!")
-    print(f"  - Generated {len(gdf)} vector features")
-    
+    if gdf is not None:
+        print(f"  - Generated {len(gdf)} vector features")
+    else:
+        print("  - No vector features generated")
+
     print("\n=== Example Complete ===")
     
     return gdf

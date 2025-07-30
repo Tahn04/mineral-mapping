@@ -8,6 +8,7 @@ from tqdm import tqdm
 import rioxarray as rxr
 import xarray as xr
 import dask.array as da
+import warnings
 
 class Parameter:
     def __init__(self, name: str, raster_path=None, array=None, crs=None, transform=None, thresholds=None):
@@ -42,7 +43,6 @@ class Parameter:
             elif transform is None:
                 # Create default identity transform with pixel size 1.0
                 # This allows coordinate creation and file writing but warns user
-                import warnings
                 warnings.warn(
                     "No transform provided. Using identity transform with 1.0 pixel size. "
                     "Output coordinates will be in pixel space, not geographic coordinates.",
@@ -56,7 +56,12 @@ class Parameter:
                 crs = crs.to_wkt()
             elif crs is None:
                 # Default to a generic CRS if none provided
-                crs = "LOCAL_CS[\"Arbitrary\"]"
+                warnings.warn(
+                    "No CRS provided. Using EPSG:4326 (WGS84) as default. "
+                    "This may not be appropriate for your data's actual coordinate system.",
+                    UserWarning
+                )
+                crs = "EPSG:4326"
             self.crs = crs 
 
             if not isinstance(array, da.Array):

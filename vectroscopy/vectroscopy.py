@@ -1,4 +1,4 @@
-from .tile_processing import ProcessingPipeline
+from .processing import ProcessingPipeline
 from .config import Config
 
 class Vectroscopy:
@@ -40,7 +40,6 @@ class Vectroscopy:
             Vectroscopy: An instance of the Vectroscopy class.
         """
         config = Config(process="default")  # could be where you have multiple processing profiles.
-        # config.config_array(param=rast, mask=mask, crs=crs, transform=transform)
         config.add_parameter(array=array, thresholds=thresholds, crs=crs, transform=transform, name=name, median_iterations=median_iterations, median_size=median_size)
         return cls(config)
 
@@ -78,7 +77,7 @@ class Vectroscopy:
         self.config.add_mask(array=array, crs=crs, transform=transform, name=name, threshold=threshold)
         return self
 
-    def config_output(self, stats, show_base, base_stats, driver, output_path):
+    def config_output(self, stats=None, show_base=None, base_stats=None, driver=None, output_path=None):
         """
         Configure the output settings for the Vectroscopy instance.
 

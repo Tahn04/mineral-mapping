@@ -1,16 +1,17 @@
 import yaml
 import os
-from . import parameter as pm
-from . import file_handler as fh
+from .. import parameter as pm
+from .. import file_handler as fh
 import re
 from pyproj import CRS, Transformer
 from tqdm import tqdm
+from typing import Dict, List, Union, Optional, Any
 
 # Import the manager classes
-from .config.parameter_manager import ParameterManager
-from .config.process_manager import ProcessManager
-from .config.output_manager import OutputManager
-from .config.file_utilities import FileUtilities
+from .parameter_manager import ParameterManager
+from .process_manager import ProcessManager
+from .output_manager import OutputManager
+from .file_utilities import FileUtilities
 
 
 class Config:
@@ -24,7 +25,7 @@ class Config:
     - OutputManager: Handles output paths, drivers, and vectorization settings
     """
     def __init__(self, yaml_file=None, process=None):
-        default_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../config/config.yaml"))
+        default_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../config/config.yaml"))
         self.yaml = True
         if yaml_file is None:
             self.yaml = False
@@ -47,10 +48,36 @@ class Config:
 
     def add_parameter(self, array, thresholds=None, crs=None, transform=None, name=None, median_iterations=1, median_size=3):
         """Add a new parameter to the configuration."""
+        # Type validation
+        if not hasattr(array, 'shape'):
+            raise ValueError("'array' must be a numpy array or array-like object")
+        
+        if thresholds is not None and not isinstance(thresholds, (list, tuple)):
+            raise ValueError("'thresholds' must be a list or tuple")
+        
+        if name is not None and not isinstance(name, str):
+            raise ValueError("'name' must be a string")
+        
+        if not isinstance(median_iterations, int):
+            raise ValueError("'median_iterations' must be an integer")
+
+        if not isinstance(median_size, int):
+            raise ValueError("'median_size' must be an integer")
+
         return self.parameter_manager.add_parameter(array, thresholds, crs, transform, name, median_iterations, median_size)
 
     def add_mask(self, array=None, crs=None, transform=None, name=None, threshold=None):
         """Add a new mask to the configuration."""
+        # Type validation
+        if array is not None and not hasattr(array, 'shape'):
+            raise ValueError("'array' must be a numpy array or array-like object")
+        
+        if name is not None and not isinstance(name, str):
+            raise ValueError("'name' must be a string")
+        
+        if threshold is not None and not isinstance(threshold, (int, float)):
+            raise ValueError("'threshold' must be a number")
+        
         return self.parameter_manager.add_mask(array, crs, transform, name, threshold)
 
     def config_array(self, param, crs, transform, mask=None):
@@ -64,6 +91,10 @@ class Config:
     # Delegate process-related methods to ProcessManager
     def set_current_process(self, process_name):
         """Set the current process name."""
+        # Type validation
+        if not isinstance(process_name, str):
+            raise ValueError("'process_name' must be a string")
+        
         return self.process_manager.set_current_process(process_name)
 
     def get_processes(self):
@@ -168,6 +199,27 @@ class Config:
             rast: Dictionary of parameter names and their file paths
             mask: Dictionary of mask names and their file paths
         """
+        # Type validation
+        if not isinstance(rast, dict):
+            raise ValueError("'rast' must be a dictionary")
+        
+        if mask is not None and not isinstance(mask, dict):
+            raise ValueError("'mask' must be a dictionary or None")
+        
+        # Validate that all values are strings (file paths)
+        for param_name, file_path in rast.items():
+            if not isinstance(param_name, str):
+                raise ValueError(f"Parameter name '{param_name}' must be a string")
+            if not isinstance(file_path, str):
+                raise ValueError(f"File path for parameter '{param_name}' must be a string")
+        
+        if mask:
+            for mask_name, file_path in mask.items():
+                if not isinstance(mask_name, str):
+                    raise ValueError(f"Mask name '{mask_name}' must be a string")
+                if not isinstance(file_path, str):
+                    raise ValueError(f"File path for mask '{mask_name}' must be a string")
+        
         self.init_parameters(rast, mask)
 
     def config_yaml(self):
@@ -192,11 +244,91 @@ class Config:
     def load_config(self):
         """Load the configuration from the YAML file."""
         if self._config is None:
-            with open(self.yaml_file, 'r') as file:
-                self._config = yaml.safe_load(file)
+            try:
+                with open(self.yaml_file, 'r') as file:
+                    self._config = yaml.safe_load(file)
+                
+                # Validate the loaded configuration
+                self._validate_config()
+                
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Configuration file not found: {self.yaml_file}")
+            except yaml.YAMLError as e:
+                raise ValueError(f"Invalid YAML syntax in configuration file: {e}")
+            except Exception as e:
+                raise ValueError(f"Error loading configuration: {e}")
+        
         # Set the current process
         if self.process:
             self.set_current_process(self.process)
+
+    def _validate_config(self):
+        """Validate the structure and types of the loaded configuration."""
+        if not isinstance(self._config, dict):
+            raise ValueError("Configuration must be a dictionary")
+        
+        # Validate processes section
+        if 'processes' in self._config:
+            self._validate_processes()
+        
+        # Validate other top-level sections as needed
+        self._validate_global_settings()
+
+    def _validate_processes(self):
+        """Validate the processes section of the configuration."""
+        processes = self._config.get('processes', {})
+        if not isinstance(processes, dict):
+            raise ValueError("'processes' must be a dictionary")
+        
+        for process_name, process_config in processes.items():
+            if not isinstance(process_config, dict):
+                raise ValueError(f"Process '{process_name}' must be a dictionary")
+            
+            # Validate parameters section
+            if 'parameters' in process_config:
+                params = process_config['parameters']
+                if not isinstance(params, dict):
+                    raise ValueError(f"Process '{process_name}': 'parameters' must be a dictionary")
+            
+            # Validate masks section
+            if 'masks' in process_config:
+                masks = process_config['masks']
+                if not isinstance(masks, dict):
+                    raise ValueError(f"Process '{process_name}': 'masks' must be a dictionary")
+            
+            # Validate pipeline section
+            if 'pipeline' in process_config:
+                pipeline = process_config['pipeline']
+                if not isinstance(pipeline, list):
+                    raise ValueError(f"Process '{process_name}': 'pipeline' must be a list")
+                
+                for i, step in enumerate(pipeline):
+                    if not isinstance(step, dict):
+                        raise ValueError(f"Process '{process_name}': pipeline step {i} must be a dictionary")
+                    if 'task' not in step:
+                        raise ValueError(f"Process '{process_name}': pipeline step {i} must have a 'task' field")
+            
+            # Validate output section
+            if 'output' in process_config:
+                output = process_config['output']
+                if not isinstance(output, dict):
+                    raise ValueError(f"Process '{process_name}': 'output' must be a dictionary")
+
+    def _validate_global_settings(self):
+        """Validate global configuration settings."""
+        # Validate median settings if present
+        if 'median' in self._config:
+            median = self._config['median']
+            if not isinstance(median, dict):
+                raise ValueError("'median' must be a dictionary")
+            
+            if 'iterations' in median and not isinstance(median['iterations'], int):
+                raise ValueError("'median.iterations' must be an integer")
+            
+            if 'size' in median and not isinstance(median['size'], int):
+                raise ValueError("'median.size' must be an integer")
+        
+        # Validate other global settings as needed
 
     def get(self, key, default=None):
         """Get a top-level config value by key."""

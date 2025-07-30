@@ -3,7 +3,7 @@ Vectroscopy: A Python package for vectorized raster data by threshold.
 """
 
 from .vectroscopy import Vectroscopy
-from .tile_processing import *
+from .processing import *
 from .raster_ops import *
 from .vector_ops import *
 from .config import *
