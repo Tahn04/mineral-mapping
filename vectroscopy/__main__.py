@@ -29,6 +29,18 @@ def main():
     process_parser.add_argument("--config", required=True, help="Path to configuration file")
     process_parser.add_argument("--output", help="Output directory")
     
+    # Config command
+    config_parser = subparsers.add_parser("config", help="Configuration file management")
+    config_subparsers = config_parser.add_subparsers(dest="config_action", help="Config actions")
+    
+    # Create config subcommand
+    create_config_parser = config_subparsers.add_parser("create", help="Create a new configuration file")
+    create_config_parser.add_argument("path", help="Path where to create the config file")
+    create_config_parser.add_argument("--template", help="Template to use", default="config.yaml")
+    
+    # List templates subcommand
+    list_templates_parser = config_subparsers.add_parser("templates", help="List available configuration templates")
+    
     # Version command
     version_parser = subparsers.add_parser("version", help="Show version information")
     
@@ -38,8 +50,12 @@ def main():
         run_demo(args.data_path)
     elif args.command == "process":
         run_process(args.config, args.output)
+    elif args.command == "config":
+        manage_config(args.config_action, getattr(args, 'path', None), getattr(args, 'template', None))
     elif args.command == "version":
         show_version()
+    elif args.command == "config":
+        manage_config(args.config_action, args.path, args.template)
     else:
         parser.print_help()
 
@@ -110,10 +126,49 @@ def run_process(config_path, output_dir=None):
 def show_version():
     """Show version information."""
     try:
-        from . import __version__
-        print(f"vectroscopy version {__version__}")
+        from . import __version__, __author__
+        print(f"Vectroscopy version {__version__}")
+        print(f"Author: {__author__}")
     except ImportError:
-        print("vectroscopy version 0.1.0")
+        print("Vectroscopy (version information not available)")
+
+def create_config_file(config_path, template="config.yaml"):
+    """Create a new configuration file."""
+    try:
+        from .config import Config
+        config = Config.create_user_config(config_path, template)
+        print(f"✓ Configuration file created successfully at: {config_path}")
+        print(f"You can now use: python -m vectroscopy process --config {config_path}")
+    except Exception as e:
+        print(f"✗ Error creating configuration file: {e}")
+        sys.exit(1)
+
+def list_config_templates():
+    """List available configuration templates."""
+    try:
+        from .config import Config
+        templates = Config.list_available_templates()
+        print("Available configuration templates:")
+        for template in templates:
+            print(f"  - {template}")
+        print(f"\nUse: python -m vectroscopy config create <path> --template <template_name>")
+    except Exception as e:
+        print(f"✗ Error listing templates: {e}")
+        sys.exit(1)
+
+def manage_config(action, path=None, template=None):
+    """Manage configuration files."""
+    if action == "create":
+        if not path:
+            print("✗ Error: path is required for config create")
+            sys.exit(1)
+        create_config_file(path, template or "config.yaml")
+    elif action == "templates":
+        list_config_templates()
+    else:
+        print("✗ Error: Unknown config action")
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

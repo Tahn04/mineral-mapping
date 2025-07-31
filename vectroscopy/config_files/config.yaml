@@ -1,0 +1,50 @@
+processes:
+  # default:
+  #   name: 
+  #   thresholds:
+  #     path: 
+  #     median:
+  #       size: 3
+  #       iterations: 1 
+  #     parameters:
+  #     masks:
+  #   pipeline:
+  #     - task: majority
+  #       iterations: 1
+  #     # - task: boundary
+  #     #   iterations: 1
+  #     - task: sieve
+  #       iterations: 1
+  #     # - task: open
+  #     #   iterations: 1
+  #   vectorization:
+  #     driver: pandas
+  #     colormap: 
+  #     stats: ["count", "mean", "std", "min", "max", "median", "75p", "25p"]
+  #     output_dict: 
+  #     base: 
+  #       show: True
+  #       stats: False
+  
+  default:
+    name: default
+    pipeline:
+      - task: majority
+        iterations: 1
+      # - task: boundary
+      #   iterations: 1
+        size: 3
+      - task: sieve
+        iterations: 1
+      # - task: open
+      #   iterations: 1
+    vectorization:
+      driver: pandas # "pandas", "ESRI Shapefile", GeoJSON, GPKG
+      cs: GCS # PCS or GCS or any wkt/proj4
+      simplify: 0
+      stats: ["area", "mean", "std", '25p', 'median', '75p']
+      colormap: Blues # matplotlib colormap
+      output_dict:
+      base: 
+        show: True
+        stats: False

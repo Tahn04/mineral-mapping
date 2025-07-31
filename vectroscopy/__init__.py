@@ -10,7 +10,7 @@ from .config import *
 from .file_handler import *
 from .parameter import *
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 __author__ = "Tahn Jandai"
 __email__ = "taja6898@colorado.edu"
 

@@ -20,6 +20,11 @@
 Install in editable (development) mode:
 
 ```bash
-git clone https://github.com/yourusername/vectroscopy.git
+git clone https://github.com/Tahn04/vectroscopy.git
 cd vectroscopy
+
+python -m venv .venv       # Create the virtual environment
+source .venv/bin/activate  # Linux/Mac
+.venv\Scripts\activate     # Windows
+
 pip install -e .

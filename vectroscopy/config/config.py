@@ -6,12 +6,113 @@ import re
 from pyproj import CRS, Transformer
 from tqdm import tqdm
 from typing import Dict, List, Union, Optional, Any
+try:
+    # Python 3.9+
+    from importlib.resources import files, as_file
+except ImportError:
+    # Python 3.8 fallback
+    from importlib_resources import files, as_file
 
 # Import the manager classes
 from .parameter_manager import ParameterManager
 from .process_manager import ProcessManager
 from .output_manager import OutputManager
 from .file_utilities import FileUtilities
+
+
+def find_default_config() -> str:
+    """
+    Find the default configuration file using proper resource management.
+    
+    Returns:
+        str: Path to the default configuration file
+        
+    Raises:
+        FileNotFoundError: If no default config file can be found
+    """
+    # First, try to find config files in the package resources
+    try:
+        config_files = files("vectroscopy.config_files")
+        
+        # Try to find config.yaml first
+        for config_name in ["config.yaml", "default.yaml", "config.json", "default.json"]:
+            try:
+                config_file = config_files / config_name
+                if config_file.is_file():
+                    # Extract to a temporary location so it can be read
+                    with as_file(config_file) as config_path:
+                        # Copy to a more permanent location in user's temp directory
+                        import tempfile
+                        import shutil
+                        temp_dir = tempfile.gettempdir()
+                        permanent_config = os.path.join(temp_dir, f"vectroscopy_{config_name}")
+                        shutil.copy2(str(config_path), permanent_config)
+                        return permanent_config
+            except (FileNotFoundError, AttributeError):
+                continue
+    except Exception:
+        pass
+    
+    # Fallback: try to find config in various common locations
+    search_paths = [
+        # Current working directory
+        os.path.join(os.getcwd(), "config.yaml"),
+        os.path.join(os.getcwd(), "config", "config.yaml"),
+        # User's home directory
+        os.path.expanduser("~/.vectroscopy/config.yaml"),
+        # System-wide config (Unix-like systems)
+        "/etc/vectroscopy/config.yaml",
+        # Development fallback (relative to package)
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../config/config.yaml")),
+    ]
+    
+    for path in search_paths:
+        if os.path.exists(path):
+            return path
+    
+    # If no config found, create a minimal default one
+    import tempfile
+    temp_config = os.path.join(tempfile.gettempdir(), "vectroscopy_default_config.yaml")
+    create_default_config_file(temp_config)
+    return temp_config
+
+
+def create_default_config_file(config_path: str):
+    """
+    Create a minimal default configuration file.
+    
+    Args:
+        config_path: Path where to create the config file
+    """
+    default_config = {
+        "processes": {
+            "default": {
+                "name": "default",
+                "description": "Default processing configuration",
+                "parameters": {},
+                "masks": {},
+                "pipeline": [
+                    {"task": "raster_ops", "parameters": {}}
+                ],
+                "output": {
+                    "path": "./output",
+                    "driver": "GeoJSON",
+                    "statistics": True,
+                    "base_mode": False,
+                    "simplification_level": 0.0,
+                    "stack_results": False
+                }
+            }
+        },
+        "median": {
+            "iterations": 1,
+            "size": 3
+        }
+    }
+    
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    with open(config_path, 'w') as f:
+        yaml.dump(default_config, f, default_flow_style=False, indent=2)
 
 
 class Config:
@@ -25,11 +126,20 @@ class Config:
     - OutputManager: Handles output paths, drivers, and vectorization settings
     """
     def __init__(self, yaml_file=None, process=None):
-        default_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../config/config.yaml"))
         self.yaml = True
         if yaml_file is None:
             self.yaml = False
-        self.yaml_file = yaml_file or default_path
+            try:
+                default_path = find_default_config()
+            except FileNotFoundError as e:
+                raise FileNotFoundError(
+                    "No configuration file found. Please provide a config file path or "
+                    "ensure a default config.yaml exists in your working directory."
+                ) from e
+        else:
+            default_path = yaml_file
+        
+        self.yaml_file = default_path
         self._config = None
         self.process = process or "default" 
         
@@ -353,4 +463,52 @@ class Config:
     def curr_process(self, value):
         """Property setter to set current process for backward compatibility."""
         self.process_manager.curr_process = value
-    
+
+    @classmethod
+    def create_user_config(cls, config_path: str, template_name: str = "config.yaml"):
+        """
+        Create a user configuration file by copying from package resources.
+        
+        Args:
+            config_path: Path where to create the user config
+            template_name: Name of the template config to copy from package resources
+        
+        Returns:
+            Config: A new Config instance using the created file
+        """
+        try:
+            config_files = files("vectroscopy.config_files")
+            template_file = config_files / template_name
+            
+            if template_file.is_file():
+                with as_file(template_file) as template_path:
+                    import shutil
+                    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+                    shutil.copy2(str(template_path), config_path)
+                    print(f"Configuration file created at: {config_path}")
+                    return cls(config_path)
+        except Exception as e:
+            print(f"Could not copy template config: {e}")
+        
+        # Fallback: create a default config
+        create_default_config_file(config_path)
+        print(f"Default configuration file created at: {config_path}")
+        return cls(config_path)
+
+    @staticmethod
+    def list_available_templates():
+        """
+        List available configuration templates in the package.
+        
+        Returns:
+            List[str]: List of available template names
+        """
+        try:
+            config_files = files("vectroscopy.config_files")
+            templates = []
+            for file_path in config_files.iterdir():
+                if file_path.suffix in ['.yaml', '.yml', '.json']:
+                    templates.append(file_path.name)
+            return templates
+        except Exception:
+            return ["config.yaml"]  # Default fallback

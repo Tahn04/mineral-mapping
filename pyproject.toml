@@ -4,54 +4,52 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vectroscopy"
-version = "0.1.0"
+version = "0.1.2"
 description = "A Python package for vectorized raster data by threshold."
 authors = [{ name = "Tahn Jandai", email = "taja6898@colorado.edu" }]
-license = { file = "LICENSE.txt" }
+license = "MIT"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: GIS",
 ]
 keywords = ["raster", "vectorization", "gis", "remote-sensing", "geospatial"]
 
 dependencies = [
-    "numpy",
-    "pandas",
-    "xarray",
-    "rioxarray",
-    "rasterio",
-    "scipy",
-    "geopandas",
-    "affine",
-    "exactextract",
-    "dask",
-    "scikit-image",
-    "pyyaml",
-    "psutil",
-    "bottleneck",
-    "tqdm",
-    "pyproj",
-    "matplotlib",
+    "numpy>=1.20.0",
+    "pandas>=1.3.0",
+    "xarray>=0.19.0",
+    "rioxarray>=0.8.0",
+    "rasterio>=1.2.0",
+    "scipy>=1.7.0",
+    "geopandas>=0.10.0",
+    "affine>=2.3.0",
+    "exactextract>=0.14.0",
+    "dask>=2021.6.0",
+    "scikit-image>=0.18.0",
+    "pyyaml>=5.4.0",
+    "psutil>=5.8.0",
+    "bottleneck>=1.3.0",
+    "tqdm>=4.60.0",
+    "pyproj>=3.2.0",
+    "matplotlib>=3.4.0",
+    "importlib-resources>=1.3.0; python_version<'3.9'",
 ]
 
 [project.scripts]
 vectroscopy = "vectroscopy.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/vectroscopy"
-"Bug Reports" = "https://github.com/yourusername/vectroscopy/issues"
-"Source" = "https://github.com/yourusername/vectroscopy"
+Homepage = "https://github.com/Tahn04/vectroscopy"
+"Bug Reports" = "https://github.com/Tahn04/vectroscopy/issues"
+"Source" = "https://github.com/Tahn04/vectroscopy"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["vectroscopy*"]
+
+[tool.setuptools.package-data]
+vectroscopy = ["config_files/*.yaml"]
