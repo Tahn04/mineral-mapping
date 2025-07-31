@@ -28,3 +28,7 @@ source .venv/bin/activate  # Linux/Mac
 .venv\Scripts\activate     # Windows
 
 pip install -e .
+
+or 
+
+pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ vectroscopy
