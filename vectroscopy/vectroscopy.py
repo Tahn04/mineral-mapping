@@ -19,7 +19,6 @@ class Vectroscopy:
             Vectroscopy: An instance of the Vectroscopy class.
         """
         config = Config(config_yaml, process=process)
-        config.config_yaml()
         return cls(config)
 
     @classmethod

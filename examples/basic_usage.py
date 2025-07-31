@@ -15,10 +15,10 @@ def main():
     
     # Example 1: From a config file
     print("\n1. Loading from config file...")
-    config_path = r"\\lasp-store\home\taja6898\Documents\Code\vectroscopy\config\custom_config.yaml"
+    config_path = '/Users/tahnjandai/Documents/VS_Code/vectroscopy/vectroscopy/config_files/JPL_config.yaml'
     
     # Uncomment to test config loading:
-    # gdf = vp.Vectroscopy.from_config(config_path, process="D2300").vectorize()
+    gdf = vp.Vectroscopy.from_config(config_path).vectorize()
     
     # Example 2: From an array
     print("\n2. Processing from array...")
@@ -72,7 +72,7 @@ def main():
     print("4. Running vectorization...")
     
     # Vectorize the data
-    gdf = vp_inst.vectorize()
+    # gdf = vp_inst.vectorize()
     
     print(f"✓ Vectorization complete!")
     if gdf is not None:

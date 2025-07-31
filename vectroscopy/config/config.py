@@ -35,7 +35,7 @@ def find_default_config() -> str:
         config_files = files("vectroscopy.config_files")
         
         # Try to find config.yaml first
-        for config_name in ["config.yaml", "default.yaml", "config.json", "default.json"]:
+        for config_name in ["config.yaml", "default.yaml"]:
             try:
                 config_file = config_files / config_name
                 if config_file.is_file():
@@ -141,7 +141,8 @@ class Config:
         
         self.yaml_file = default_path
         self._config = None
-        self.process = process or "default" 
+        self.process = process
+        self.process_list = []
         
         # Initialize managers
         self.parameter_manager = ParameterManager(self)
@@ -353,7 +354,7 @@ class Config:
 
     def load_config(self):
         """Load the configuration from the YAML file."""
-        if self._config is None:
+        if self._config is None: # remove
             try:
                 with open(self.yaml_file, 'r') as file:
                     self._config = yaml.safe_load(file)
@@ -368,9 +369,10 @@ class Config:
             except Exception as e:
                 raise ValueError(f"Error loading configuration: {e}")
         
-        # Set the current process
-        if self.process:
-            self.set_current_process(self.process)
+        self.process_manager.config_process_list(self.process)
+        # # Set the current process
+        # if self.process:
+        #     self.set_current_process(self.process)
 
     def _validate_config(self):
         """Validate the structure and types of the loaded configuration."""
@@ -380,6 +382,8 @@ class Config:
         # Validate processes section
         if 'processes' in self._config:
             self._validate_processes()
+        else:
+            raise ValueError("'processes' section is required in the configuration")
         
         # Validate other top-level sections as needed
         self._validate_global_settings()
@@ -397,13 +401,15 @@ class Config:
             # Validate parameters section
             if 'parameters' in process_config:
                 params = process_config['parameters']
+                if not params:
+                    raise ValueError(f"Process '{process_name}': 'parameters' dictionary is empty")
                 if not isinstance(params, dict):
                     raise ValueError(f"Process '{process_name}': 'parameters' must be a dictionary")
-            
+
             # Validate masks section
             if 'masks' in process_config:
                 masks = process_config['masks']
-                if not isinstance(masks, dict):
+                if not isinstance(masks, dict) and masks is not None:
                     raise ValueError(f"Process '{process_name}': 'masks' must be a dictionary")
             
             # Validate pipeline section

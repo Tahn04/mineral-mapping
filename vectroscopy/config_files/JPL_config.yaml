@@ -1,0 +1,219 @@
+processes:
+  Parameter1:
+    name: D2300
+    path: # \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters
+    parameters:
+      D2300:
+        # path: \\lasp-store\home\taja6898\Documents\Mars_Data\T1250_demo_parameters\T1250_cdodtot_BAL1_D2300.IMG
+        path: /Users/tahnjandai/SPATIAL DATA/T1250 Demo Parameters/T1250_cdodtot_BAL1_D2300.IMG
+        # path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_D2300_MOS_IMP.IMG
+        # - \\lasp-store\home\taja6898\Documents\Mars_Data\Global_demo_parameters\TEST02_D2300.IMG
+        # - [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275]
+        # - [0.0075, 0.0175, 0.0275]
+        thresholds: [0.005, 0.0125, 0.02, 0.0275] # what ran on the arcpy code
+        # thresholds: [75p, 85p, 95p]
+        # - [0.0275]
+        median:
+          iterations: 1
+    masks: 
+
+    pipeline:
+      - task: majority
+        iterations: 1
+      # - task: boundary
+      #   iterations: 1
+        size: 3
+      - task: sieve
+        iterations: 1
+      # - task: open
+      #   iterations: 1
+    vectorization:
+      driver: GeoJSON # "pandas", "ESRI Shapefile", GeoJSON, GPKG
+      cs: GCS # PCS or GCS or any wkt/proj4
+      simplify: 0
+      # stats: ["area", "mean", "std", "5p", '25p', 'median', '75p', "95p"]
+      stats: ["area", "mean", "std", '25p', 'median', '75p',]
+      colormap: Blues # matplotlib colormap
+      output_dict: \\lasp-store\home\taja6898\Documents\Code\vectroscopy\outputs
+      base: 
+        show: True
+        stats: [] #["area", "mean", "std", "min", "max", '25p', '75p']
+  
+  Parameter2:
+    name: SINDEX2
+    path:
+    parameters:
+      D2300:
+        path: '/Users/tahnjandai/SPATIAL DATA/T1250 Demo Parameters/T1250_cdodtot_BAL1_SINDEX2.IMG'
+        # path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_D2300.IMG
+        median:
+          iterations: 1
+        thresholds: [0.015, 0.02, 0.025, 0.03, 0.035]
+        operator: '>'
+  
+    masks:
+
+    pipeline:
+      # - task: majority
+      #   iterations: 1
+      - task: boundary
+        iterations: 1
+      #   size: 3
+      # - task: sieve
+      #   iterations: 1
+      - task: open
+        iterations: 1
+
+    vectorization:
+      driver: GeoJSON 
+      cs: GCS
+      simplify: 0
+      stats: ["area", "mean", "std", "5p", '25p', 'median', '75p', "95p"]
+      color: cyan
+      output_dict: \\lasp-store\home\taja6898\Documents\Code\vectroscopy\outputs
+      stack: False
+      base: 
+        show: True
+        stats: []
+
+  # TESTING_INDIC:
+  #   name: G2_PolySulfates_TEST_DELIVERY2
+  #   path:
+  #   parameters:
+  #     BD1900_2:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_BD1900_2_MOS_IMP.IMG
+  #       thresholds: [0.012, 0.015, 0.017]
+  #       median:
+  #         iterations: 1
+
+  #     SINDEX2:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_BD1900_2_MOS_IMP.IMG
+  #       thresholds: [0.01, 0.015, 0.02]
+  #       median:
+  #         iterations: 1
+  #   masks:
+  #     BD1500_2:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_BD1500_2_MOS_IMP.IMG
+  #       thresholds: [0.005]
+  #       median:
+  #         iterations: 1
+
+  #     BD2100_2:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_BAL1_EQU_IMP_BD2100_2_MOS_IMP.IMG
+  #       thresholds: [0.01]
+  #       median:
+  #         iterations: 1
+      
+  #     BD1900_2_mask:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_NSP_EQU_IMP_BD1900_2_GID_MOS_IMP.IMG
+  #       thresholds: [1]
+  #       keep_shape: True
+
+  #     SINDEX2_mask:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_NSP_EQU_IMP_SINDEX2_GID_MOS_IMP.IMG
+  #       thresholds: [1]
+  #       keep_shape: True
+
+  #     BD1500_2_mask:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_NSP_EQU_IMP_BD1500_2_GID_MOS_IMP.IMG
+  #       thresholds: [1]
+  #       keep_shape: True
+
+  #     BD2100_2_mask:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\LatitudeBands_demo_parameters\MC_789ABCDEFGHIJKLM_NSP_EQU_IMP_BD2100_2_GID_MOS_IMP.IMG
+  #       thresholds: [1]
+  #       keep_shape: True
+
+  #   pipeline:
+  #     - task: majority
+  #       iterations: 1
+  #     # - task: boundary
+  #     #   iterations: 1
+  #     #   size: 3
+  #     - task: sieve
+  #       iterations: 1
+  #     # - task: open
+  #     #   iterations: 1
+
+  #   vectorization:
+  #     driver: GeoJSON #GeoJSON 
+  #     cs: GCS
+  #     simplify: 0
+  #     stats: ["area", "mean", "std", "5p", '25p', 'median', '75p', "95p"]
+  #     color: violet #cyan
+  #     output_dict: \\lasp-store\home\taja6898\Documents\Code\mineral-mapping\outputs
+  #     stack: False
+  #     base: 
+  #       show: True
+  #       stats: []
+
+  # TESTING_INDIC_MC:
+  #   name: MC13_PolySulfates_7_24
+  #   path:
+  #   parameters:
+  #     BD1900_2:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_BD1900_2.IMG
+  #       thresholds: [0.012, 0.015, 0.017]
+  #       median:
+  #         iterations: 1
+
+  #     SINDEX2:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_SINDEX2.IMG
+  #       thresholds: [0.01, 0.015, 0.02]
+  #       median:
+  #         iterations: 1
+  #   masks:
+  #     BD1500_2:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_BD1500_2.IMG
+  #       thresholds: [0.005]
+  #       median:
+  #         iterations: 1
+
+  #     BD2100_2:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_BAL1_EQU_IMP_BD2100_2.IMG
+  #       thresholds: [0.01]
+  #       median:
+  #         iterations: 1
+      
+  #     BD1900_2_mask:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_NSP_EQU_IMP_BD1900_2_GID.IMG
+  #       thresholds: [1]
+  #       keep_shape: True
+
+  #     SINDEX2_mask:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_NSP_EQU_IMP_SINDEX2_GID.IMG
+  #       thresholds: [1]
+  #       keep_shape: True
+
+  #     BD1500_2_mask:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_NSP_EQU_IMP_BD1500_2_GID.IMG
+  #       thresholds: [1]
+  #       keep_shape: True
+
+  #     BD2100_2_mask:
+  #       path: \\lasp-store\home\taja6898\Documents\Mars_Data\MC13_demo_parameters\MC13_NSP_EQU_IMP_BD2100_2_GID.IMG
+  #       thresholds: [1]
+  #       keep_shape: True
+
+  #   pipeline:
+  #     - task: majority
+  #       iterations: 1
+  #     # - task: boundary
+  #     #   iterations: 1
+  #     #   size: 3
+  #     - task: sieve
+  #       iterations: 1
+  #     # - task: open
+  #     #   iterations: 1
+
+  #   vectorization:
+  #     driver: ESRI Shapefile #GeoJSON 
+  #     cs: GCS
+  #     simplify: 0
+  #     stats: ["area", "mean", "std", "5p", '25p', 'median', '75p', "95p"]
+  #     color: violet #cyan
+  #     output_dict: \\lasp-store\home\taja6898\Documents\Code\vectroscopy\outputs
+  #     stack: True
+  #     base: 
+  #       show: True
+  #       stats: []

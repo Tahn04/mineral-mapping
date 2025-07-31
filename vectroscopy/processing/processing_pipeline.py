@@ -34,19 +34,23 @@ class ProcessingPipeline:
         Returns:
             GeoDataFrame or None: Processed vector data
         """
-        try:
-            fh.FileHandler()
-            print(fh.FileHandler().get_directory())
-            process = self.config.get_current_process()
-            
-            for _ in tqdm(range(1), desc=f"Processing: {process['name']}"):
+        process_list = self.config.process_list
+        for process in process_list:
+            try:
+                self.config.set_current_process(process)
+                if self.config.yaml:
+                    self.config.config_yaml()
+                fh.FileHandler()
+                print(fh.FileHandler().get_directory())
                 param_list = self.config.get_parameters_list()
                 processed_rasters = self.process_parameters(param_list)
-                return self.vectorizer.vectorize(processed_rasters, param_list, self.crs, self.transform)
-                
-        finally:
-            fh.FileHandler().cleanup()
-            print("Files cleaned up.")
+                vectors =  self.vectorizer.vectorize(processed_rasters, param_list, self.crs, self.transform)
+                if vectors is not None:
+                    return vectors
+            finally:
+                fh.FileHandler().cleanup()
+                print("Files cleaned up.")
+        return None
 
     def process_parameters(self, param_list):
         """

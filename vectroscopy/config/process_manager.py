@@ -55,6 +55,16 @@ class ProcessManager:
             raise ValueError(f"Process '{self.curr_process}' not found in configuration.")
         return processes[self.curr_process]
     
+    def config_process_list(self, process):
+        """Get a list of all process names defined in the configuration."""
+        if process is None:
+            processes = self.get_processes()
+            if not processes:
+                raise ValueError("No processes defined in configuration")
+            self.config.process_list = list(processes.keys())
+        else:
+            self.config.process_list = [process]
+
     def get_nested(self, *keys, default=None):
         """
         Get a nested config value by a sequence of keys.

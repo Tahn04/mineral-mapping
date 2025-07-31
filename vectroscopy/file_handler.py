@@ -67,3 +67,5 @@ class FileHandler:
             shutil.rmtree(self.temp_dir)
         self.temp_dir = None
         self._initialized = False
+    
+    
